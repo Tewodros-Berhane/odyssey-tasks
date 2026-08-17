@@ -1,0 +1,30 @@
+{
+  "title": "Zero-Dependency RFC 8446 TLS 1.3 Handshake State Machine & AEAD Record Layer",
+  "workingSlug": "tls13-crypto-handshake-engine",
+  "collectionFamily": "Library clone",
+  "taskFamily": "feature_development",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a complete, zero-dependency TLS 1.3 (RFC 8446) cryptographic handshake engine and AEAD record layer in C++20. The engine must support X25519 Elliptic Curve Diffie-Hellman (ECDH) key exchange, HKDF key derivation schedule (HKDF-Extract and HKDF-Expand-Label generating early, handshake, and master secrets), AES-128-GCM and ChaCha20-Poly1305 AEAD record encryption/decryption, client/server handshake state machines (ClientHello, ServerHello, EncryptedExtensions, Certificate, CertificateVerify with Ed25519/RSA-PSS, Finished), 0-RTT Early Data, and Session Resumption using Pre-Shared Keys (PSK).",
+  "motivation": "Secure transport protocols form the foundation of internet security. Implementing TLS 1.3 from scratch tests precise bitwise framing, cryptographic state machines, non-malleable transcript hashing (SHA-256/SHA-384), and side-channel-resistant constant-time operations.",
+  "difficultyExplanation": "1. HKDF Key Schedule & Transcript Hashing: Correctly managing cumulative transcript hashes across fragmented handshake flights, key phase updates, and distinct early/handshake/application secret derivations without desynchronization.\n2. AEAD Record Layer Padding & Sequence Counters: Implementing 64-bit implicit sequence number XORing with IVs, inner plaintext content-type wrapping, and constant-time authentication tag validation to prevent padding oracle and timing attacks.\n3. 0-RTT Replay Protection & PSK State: Managing session ticket encryption/decryption and handling anti-replay windows for 0-RTT early data while rejecting invalid PSK binders.",
+  "expertTimeEstimateHours": 18,
+  "environmentSummary": "Debian 12 container with gcc-13, clang-18, cmake, ninja-build, valgrind, and offline TLS 1.3 RFC conformance test vectors and PCAP replay harnesses in /app. Starter repository includes cryptographic primitive wrappers, TLS record framing templates, and loopback flight test runners.",
+  "resourceEstimate": {
+    "cpuMillis": 8000,
+    "memoryMb": 16384,
+    "storageMb": 10240,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference implementation providing an event-driven TLS 1.3 state machine, constant-time X25519 scalar multiplication, HKDF secret tree, and AES-GCM/ChaCha20 AEAD transform filters.",
+  "verificationStrategy": "The verifier runs test.sh which executes four verification channels:\n1. RFC 8446 Appendix Test Vectors (HKDF secret derivation, transcript hash matching, record encryption/decryption).\n2. Full Bidirectional 1-RTT & 0-RTT Loopback (verifying ClientHello -> Finished flights and PSK session resumption).\n3. Handshake Fuzzing & Malformed Record Rejection (testing truncated flights, mismatched cipher suites, and invalid signatures without panics).\n4. Constant-Time & Memory Sanitizer Checks (validating constant-time MAC tag checks and 0 ASan/UBSan violations).",
+  "binarySuccessCondition": "Passes 100% of RFC 8446 cryptographic test vectors, completes full 1-RTT and 0-RTT handshakes with mutual authentication, and passes 0 sanitizer violations.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 25%: HKDF key schedule & X25519 ECDH key generation.\n- 25%: AEAD record layer encryption & decryption (AES-GCM / ChaCha20).\n- 25%: Full 1-RTT ClientHello -> Finished handshake state machine.\n- 25%: 0-RTT PSK session resumption & key updates.",
+  "anticipatedExploits": "1. Linking OpenSSL / BoringSSL dynamically: Verifier checks static symbols and disassembles binaries to ensure custom crypto math is compiled from source.\n2. Insecure dummy keys / bypass encryption: Verifier tests byte-exact ciphertext decryption against sealed test vectors."
+}

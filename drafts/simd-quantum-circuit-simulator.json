@@ -1,0 +1,30 @@
+{
+  "title": "AVX-512 / AVX2 Accelerated 32-Qubit Quantum State-Vector Simulator with Gate Fusion",
+  "workingSlug": "simd-quantum-circuit-simulator",
+  "collectionFamily": "Algorithmic optimization",
+  "taskFamily": "performance",
+  "verifierFamily": "programmatic",
+  "objective": "Implement an ultra-fast, multi-threaded 32-qubit state-vector quantum circuit simulator in C++20 accelerated by hand-optimized AVX2 / AVX-512 complex arithmetic intrinsics. The engine must support arbitrary quantum gates (Hadamard, Pauli-X/Y/Z, Phase/T gates, parameterized Rotation gates Rx, Ry, Rz, and two-qubit entangling gates CNOT, CZ, SWAP), static unitary gate fusion (merging sequences of single-qubit and two-qubit gates into dense 4x4 or 8x8 unitary matrix kernels), cache-blocking state-vector strides, and parallel multi-qubit measurement sampling.",
+  "motivation": "Quantum circuit simulation is heavily compute- and memory-bandwidth-bound (2^32 complex amplitudes require 64 GB of memory in complex64). Pushing simulation performance requires advanced SIMD complex multiplication, cache-locality optimization across non-contiguous index strides, and algebraic gate fusion.",
+  "difficultyExplanation": "1. SIMD Complex Arithmetic on Strided Amplitudes: Applying quantum gates across non-contiguous qubit target indices requires fast SIMD permutations (_mm256_permute2f128_ps, _mm256_shuffle_ps) to avoid strided memory access bottlenecks.\n2. Algebraic Gate Fusion: Analyzing circuit DAGs to automatically coalesce consecutive 1-qubit and 2-qubit operations acting on overlapping target qubits into fused multi-qubit unitary matrices to minimize memory bandwidth passes.\n3. Multi-Threaded Cache-Blocking: Partitioning the 2^N state vector into L1/L2 cache-sized sub-blocks so multiple gates can be applied in SRAM without round-tripping to main RAM.",
+  "expertTimeEstimateHours": 16,
+  "environmentSummary": "Debian 12 with gcc-13, clang-18, cmake, ninja-build, and Python 3.10 verification harness in /app. Starter repository includes complex arithmetic vector abstractions, basic quantum gate definitions, state vector memory allocators, and unit test runners.",
+  "resourceEstimate": {
+    "cpuMillis": 8000,
+    "memoryMb": 65536,
+    "storageMb": 20480,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference C++20 implementation providing AVX2/AVX-512 fused 2x2 and 4x4 unitary kernels, OpenMP thread partitioning, and an automated circuit DAG fusion optimizer.",
+  "verificationStrategy": "The verifier runs test.sh which executes four verification channels:\n1. Basic Gate Superposition & Entanglement Verification (Bell state, GHZ state, QFT-8).\n2. Quantum Random Circuit Sampling (RCS) Fidelity Test on 24-30 qubits (asserting state vector fidelity F >= 0.999999 against exact mathematical tensor contraction).\n3. Static Unitary Gate Fusion Correctness (verifying fused matrix operators produce exact mathematical outputs across random rotation angles).\n4. SIMD Performance & Throughput Benchmark (verifying >= 8x speedup over un-fused baseline and 0 ASan errors).",
+  "binarySuccessCondition": "State vector fidelity F >= 0.99999 across all test circuits, zero race conditions, and >= 8x execution speedup over baseline un-fused simulator.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 25%: Basic single-qubit and two-qubit gate simulation correctness.\n- 25%: Multi-qubit entanglement & QFT state fidelity.\n- 25%: Static gate fusion DAG optimization.\n- 25%: AVX2 SIMD acceleration throughput speedup (>= 8x).",
+  "anticipatedExploits": "1. Hardcoding final state vectors: Verifier generates dynamic random quantum circuits with random continuous angles (theta, phi, lambda) at evaluation time.\n2. Dropping low-probability amplitudes: Verifier checks state normalization (sum of squared amplitudes == 1.0) and fidelity against exact double-precision math."
+}

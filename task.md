@@ -474,3 +474,174 @@
   - *Exploit*: Storing precomputed final state vectors for known benchmark circuits.
   - *Mitigation*: Verifier generates dynamic random quantum circuits with randomized continuous rotation parameters at evaluation time.
 
+
+---
+
+## Task 10: Standalone RFC 8446 TLS 1.3 Cryptographic Handshake Engine
+
+### Draft Metadata
+
+- **	itle**: Zero-Dependency RFC 8446 TLS 1.3 Handshake State Machine & AEAD Record Layer
+- **workingSlug**: 	ls13-crypto-handshake-engine
+- **collectionFamily**: Library clone
+- **	askFamily**: eature_development
+- **erifierFamily**: programmatic
+- **expertTimeEstimateHours**: 18
+
+### Problem & Scope
+- **objective**: Implement a complete, zero-dependency TLS 1.3 (RFC 8446) cryptographic handshake engine and AEAD record layer in C++20 or Rust. The engine must support X25519 Elliptic Curve Diffie-Hellman (ECDH) key exchange, HKDF key derivation schedule (HKDF-Extract and HKDF-Expand-Label generating early, handshake, and master secrets), AES-128-GCM and ChaCha20-Poly1305 AEAD record encryption/decryption, client/server handshake state machines (ClientHello, ServerHello, EncryptedExtensions, Certificate, CertificateVerify with Ed25519/RSA-PSS, Finished), 0-RTT Early Data, and Session Resumption using Pre-Shared Keys (PSK).
+- **motivation**: Secure transport protocols form the foundation of internet security. Implementing TLS 1.3 from scratch tests precise bitwise framing, cryptographic state machines, non-malleable transcript hashing (SHA-256/SHA-384), and side-channel-resistant constant-time operations.
+
+### Difficulty & Reasoning
+- **difficultyExplanation**:
+  1. **HKDF Key Schedule & Transcript Hashing**: Correctly managing cumulative transcript hashes across fragmented handshake flights, key phase updates, and distinct early/handshake/application secret derivations without desynchronization.
+  2. **AEAD Record Layer Padding & Sequence Counters**: Implementing 64-bit implicit sequence number XORing with IVs, inner plaintext content-type wrapping, and constant-time authentication tag validation to prevent padding oracle and timing attacks.
+  3. **0-RTT Replay Protection & PSK State**: Managing session ticket encryption/decryption and handling anti-replay windows for 0-RTT early data while rejecting invalid PSK binders.
+
+### Environment & Compute Budget
+- **environmentSummary**: Debian 12 container with gcc-13, clang-18, cmake, ninja-build, valgrind, and offline TLS 1.3 RFC conformance test vectors and PCAP replay harnesses in /app.
+- **
+esourceEstimate**:
+  - cpuMillis: 8000
+  - memoryMb: 16384 (16 GB)
+  - storageMb: 10240 (10 GB)
+  - gpuCount: 0
+  - gentTimeoutSec: 28800 (8 hours)
+  - erifierTimeoutSec: 1800 (30 mins)
+- **
+etworkRequirements**: 
+one (offline testbed replays standard RFC 8446 vectors and synthetic client-server loopback flights)
+
+### Oracle & Verification
+- **oracleStrategy**: Reference implementation providing an event-driven TLS 1.3 state machine, constant-time X25519 scalar multiplication, HKDF secret tree, and AES-GCM/ChaCha20 AEAD transform filters.
+- **erificationStrategy**:
+  - **Public Tests**: RFC 8446 Appendix test vectors (HKDF secret derivation, transcript hash matching, record encryption/decryption).
+  - **Hidden Tests**:
+    1. Full bidirectional TLS 1.3 handshake loopback against simulated clients and servers covering 1-RTT, 0-RTT PSK resumption, and KeyUpdate phases.
+    2. Pathological handshake fuzzing testing truncated records, invalid signatures, malformed extensions, and mismatched cipher suites without panics or memory leaks.
+    3. Side-channel and Constant-Time Verification: Validating constant-time execution of MAC tag verification using ASan and timing analysis.
+
+### Scoring & Anti-Exploits
+- **inarySuccessCondition**: Passes 100% of RFC 8446 cryptographic test vectors, completes full 1-RTT and 0-RTT handshakes with mutual authentication, and passes 0 sanitizer violations.
+- **partialScoreStrategy**:
+  - 25%: HKDF key schedule & X25519 ECDH key generation.
+  - 25%: AEAD record layer encryption & decryption (AES-GCM / ChaCha20).
+  - 25%: Full 1-RTT ClientHello -> Finished handshake state machine.
+  - 25%: 0-RTT PSK session resumption & key updates.
+- **nticipatedExploits**:
+  - *Exploit*: Linking OpenSSL / BoringSSL dynamically or using system libcrypto.
+  - *Mitigation*: Verifier checks static symbols, disassembles binaries, and inspects dependencies to ensure custom crypto math is compiled from source.
+
+---
+
+## Task 11: Lock-Free Thread-Caching Memory Allocator with Hazard Pointers
+
+### Draft Metadata
+
+- **	itle**: Lock-Free Thread-Caching Memory Allocator with Hazard Pointers and Size-Class Arenas
+- **workingSlug**: lockfree-memory-allocator-hazard
+- **collectionFamily**: Product clone
+- **	askFamily**: performance
+- **erifierFamily**: programmatic
+- **expertTimeEstimateHours**: 18
+
+### Problem & Scope
+- **objective**: Implement a production-grade, lock-free thread-caching dynamic memory allocator (similar to jemalloc / mimalloc) in C++20. The allocator must support segregated size-class bins (small, medium, large, huge pages), thread-local cache arenas with lock-free batch filling/flushing to a central slab repository, lock-free memory reclamation using Hazard Pointers and Epoch-Based Reclamation (EBR) to eliminate ABA issues during concurrent remote frees, NUMA-aware huge-page mmap allocations, and zero false-sharing cacheline padding under 64 concurrent allocating/deallocating threads.
+- **motivation**: Multi-threaded scale-up engines (databases, web servers, high-frequency trading systems) suffer extreme lock contention and false sharing in stock allocators. Writing a lock-free memory allocator requires mastering low-level atomic primitives, cache line layout, kernel virtual memory paging, and safe deferred memory reclamation.
+
+### Difficulty & Reasoning
+- **difficultyExplanation**:
+  1. **Lock-Free Central Slab Lists & ABA Avoidance**: Managing atomic singly-linked lists of free spans/chunks across concurrent threads without locks or ABA corruption using Hazard Pointers or tagged 128-bit atomic pointers (cmpxchg16b).
+  2. **Thread-Local Cache Rebalancing**: Implementing low-overhead batch transfers between private thread caches and shared arenas without causing memory leaks or lock-step thread stalling when threads terminate.
+  3. **Memory Fragmentation & Coalescing**: Splitting and coalescing adjacent buddy spans in virtual address space while maintaining lock-free invariants and high allocation throughput (>20M ops/sec).
+
+### Environment & Compute Budget
+- **environmentSummary**: Debian 12 container with gcc-13, clang-18, cmake, ninja-build, valgrind, and multi-threaded allocation benchmark suites in /app.
+- **
+esourceEstimate**:
+  - cpuMillis: 8000
+  - memoryMb: 16384 (16 GB)
+  - storageMb: 10240 (10 GB)
+  - gpuCount: 0
+  - gentTimeoutSec: 28800 (8 hours)
+  - erifierTimeoutSec: 1800 (30 mins)
+- **
+etworkRequirements**: 
+one
+
+### Oracle & Verification
+- **oracleStrategy**: Reference implementation featuring thread-local freelist bins, lock-free lockless span radices, Hazard Pointer reclamation lists, and dynamic mmap page management.
+- **erificationStrategy**:
+  - **Public Tests**: Basic malloc/free correctness, alignment checks (16-byte, 64-byte, 4096-byte), realloc, and memory bounds tests.
+  - **Hidden Tests**:
+    1. Multi-threaded producer-consumer stress test: 32 producer threads allocating objects passed across lock-free queues to 32 consumer threads deallocating them (testing remote frees).
+    2. Heap fragmentation stress test: 1,000,000 randomized variable-sized allocations/deallocations measuring resident set size (RSS) bloat (<15% overhead).
+    3. ThreadSanitizer & AddressSanitizer validation pass ensuring zero race conditions, double-frees, or use-after-free anomalies.
+
+### Scoring & Anti-Exploits
+- **inarySuccessCondition**: Zero memory corruption or data races across 64-thread allocation stress tests, RSS memory bloat < 15%, and throughput >= 15M alloc/sec on 8 CPUs.
+- **partialScoreStrategy**:
+  - 25%: Single-threaded size-class allocation & alignment correctness.
+  - 25%: Thread-local caching & batch slab synchronization.
+  - 25%: Hazard pointer lock-free remote deallocation without ABA corruption.
+  - 25%: Multi-threaded throughput speedup & zero TSan/ASan violations.
+- **nticipatedExploits**:
+  - *Exploit*: Wrapping system malloc/free directly or using pthread_mutex global locks.
+  - *Mitigation*: Verifier intercepts libc malloc symbols and enforces strict throughput ceilings that lock-based allocators fail under 64-thread contention.
+
+---
+
+## Task 12: Differentiable Sparse Voxel Octree (SVO) Ray-Tracing Renderer
+
+### Draft Metadata
+
+- **	itle**: Differentiable Sparse Voxel Octree Renderer with Analytical Radiance Gradients
+- **workingSlug**: differentiable-sparse-voxel-octree
+- **collectionFamily**: ML engineering
+- **	askFamily**: performance
+- **erifierFamily**: programmatic
+- **expertTimeEstimateHours**: 16
+
+### Problem & Scope
+- **objective**: Implement a high-performance, differentiable Sparse Voxel Octree (SVO) ray-tracing renderer in C++20 with AVX2/OpenMP acceleration and analytical backward gradient computation for 3D radiance field reconstruction. The engine must support Morton-order (Z-curve) bit-interleaved spatial hashing, multi-level DDA (Digital Differential Analyzer) ray marching with empty-space skipping, trilinear density and spherical harmonics (SH degree 2) color interpolation, and exact analytical backward passes computing gradients with respect to voxel densities and SH coefficients (\sigma, dc$) from screen-space image loss.
+- **motivation**: Real-time neural rendering and 3D radiance field optimization (NeRF, Gaussian Splatting, PlenOctrees) require ultra-fast ray marching through hierarchical spatial structures. Implementing a differentiable SVO tests spatial indexing, fast ray-box intersections, volume rendering physics, and analytical calculus on 3D data.
+
+### Difficulty & Reasoning
+- **difficultyExplanation**:
+  1. **Hierarchical DDA Ray Traversal with Empty-Space Skipping**: Efficiently stepping rays through sparse octree levels using bitwise child-mask tests and parametric {	ext{min}}, t_{	ext{max}}$ updates without branch divergence.
+  2. **Analytical Backward Volume Rendering Gradients**: Deriving and implementing continuous adjoint derivatives for transmittance  = \exp(-\sum \sigma_j \delta_j)$ and alpha-compositing gradients (	ext{Loss} / d\sigma_k, d	ext{Loss} / dc_k$) along ray paths without storing full (R 	imes S)$ activation volumes.
+  3. **Morton Code (Z-Order) Octree Bit Manipulations**: Interleaving and de-interleaving 3D coordinates using bitwise magic numbers (_pdep_u32 / _pext_u32) for compact memory layouts.
+
+### Environment & Compute Budget
+- **environmentSummary**: Debian 12 with gcc-13, clang-18, cmake, ninja-build, libomp-dev, and Python 3.10 verification harness in /app. Includes synthetic 3D test scenes and ground-truth multi-view camera datasets.
+- **
+esourceEstimate**:
+  - cpuMillis: 8000
+  - memoryMb: 16384 (16 GB)
+  - storageMb: 10240 (10 GB)
+  - gpuCount: 0
+  - gentTimeoutSec: 28800 (8 hours)
+  - erifierTimeoutSec: 1800 (30 mins)
+- **
+etworkRequirements**: 
+one
+
+### Oracle & Verification
+- **oracleStrategy**: Reference C++20 implementation providing a bit-compressed octree representation, SIMD-accelerated DDA ray tracer, and an analytical backward pass for volume radiance gradients.
+- **erificationStrategy**:
+  - **Public Tests**: Basic ray-octree intersection, Morton encoding/decoding, and forward image rendering on a unit sphere scene.
+  - **Hidden Tests**:
+    1. Backward Gradient Precision Check: Comparing analytical gradients (\sigma, dc$) against numerical finite differences across 10,000 ray samples with relative error $< 10^{-3}$.
+    2. Multi-view 3D reconstruction benchmark: Fitting a sparse voxel radiance field to 20 multi-view training images in <60 seconds, achieving PSNR $\ge 28.0$ dB on held-out test camera views.
+    3. Performance & Threading Benchmark: Must achieve $\ge 50$ frames per second (FPS) at  	imes 800$ resolution on 8 CPUs.
+
+### Scoring & Anti-Exploits
+- **inarySuccessCondition**: Analytical gradients match finite differences with error $< 10^{-3}$, held-out view PSNR $\ge 28.0$ dB, and forward render frame rate $\ge 40$ FPS.
+- **partialScoreStrategy**:
+  - 25%: Morton code encoding & octree ray traversal correctness.
+  - 25%: Forward trilinear volume rendering & spherical harmonics color evaluation.
+  - 25%: Analytical backward gradient accuracy (\infty < 10^{-3}$).
+  - 25%: Reconstruction convergence (PSNR $\ge 28.0$ dB) and render throughput.
+- **nticipatedExploits**:
+  - *Exploit*: Approximating backward pass with unweighted straight-through estimators.
+  - *Mitigation*: Verifier checks exact analytical gradient tolerances (\infty < 10^{-3}$) against ground-truth mathematical derivation.
