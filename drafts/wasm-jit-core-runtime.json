@@ -1,0 +1,30 @@
+{
+  "title": "Zero-Copy WASM Core Engine with Tier-1 JIT Compiler and Spec Conformance",
+  "workingSlug": "wasm-jit-core-runtime",
+  "collectionFamily": "Library clone",
+  "taskFamily": "feature_development",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a standalone WebAssembly (WASM MVP) core engine in C++20 featuring a streaming zero-copy binary parser/validator and a Tier-1 baseline JIT compiler generating native x86-64 machine code directly into executable memory pages (mmap with PROT_EXEC). The runtime must execute WASM control flow (block, loop, if/else, br, br_if, br_table), value stack manipulations, linear memory bounds checking, host imports/exports conforming to System V AMD64 ABI, and pass 100% of the WebAssembly Core Specification tests.",
+  "motivation": "WASM is the universal runtime for serverless edge computing, plugin sandboxes, and browser execution. Building a lightweight JIT runtime tests low-level ABI calling conventions, machine code generation, register allocation, and bytecode validation.",
+  "difficultyExplanation": "1. Single-Pass x86-64 Machine Code Emission: Lowering structured WASM control blocks into native relative branch offsets while managing value stack depths and target label unwinds.\n2. Linear Memory Bounds & Signal Handling: Enforcing memory safety for i32/i64 loads/stores without excessive runtime overhead via guard pages or inline limit checks.\n3. Host Import/Export ABI Calling Conventions: Bridging WASM stack parameters to native System V AMD64 hardware registers (rdi, rsi, rdx, rcx, r8, r9) and floating-point registers (xmm0-xmm7) with zero intermediate copying.",
+  "expertTimeEstimateHours": 18,
+  "environmentSummary": "Debian 12 container with gcc-13, g++-13, clang-18, cmake 3.28, ninja-build, wabt (WebAssembly Binary Toolkit), and the W3C WASM Core Spec test suite pre-installed in /app. Starter repository provides binary section parser skeletons, x86-64 opcode buffer encoders, and unit test suites.",
+  "resourceEstimate": {
+    "cpuMillis": 8000,
+    "memoryMb": 16384,
+    "storageMb": 10240,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference C++20 implementation under solution/ provides a streaming LEB128 decoder, an x86-64 single-pass opcode emitter with register caching, and an mmap-backed executable memory manager conforming to W3C Core Spec.",
+  "verificationStrategy": "The verifier runs test.sh which executes four verification channels:\n1. WASM Binary Section Parsing & LEB128 Validation (decoding Type, Import, Function, Memory, Global, Export, Code sections).\n2. W3C Core Spec Control Flow & Math Conformance (testing arithmetic, loops, branches, nested blocks, and br_table).\n3. Native x86-64 JIT Execution & Speedup Benchmark (verifying code executes natively via mmap PROT_EXEC and beats interpreter baseline by >5x).\n4. Memory Bounds Trapping & Sanitizer Checks (testing out-of-bounds traps and ASan/UBSan clean execution).",
+  "binarySuccessCondition": "Passes >= 98% of the W3C WASM core test suite, compiles to native executable x86-64 code, intercepts memory traps safely, and passes 0 sanitizer errors.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 25%: WASM binary parsing & LEB128 decoding.\n- 25%: Arithmetic & stack manipulation opcode execution.\n- 25%: Structured control flow (block, loop, br_table) & function calls.\n- 25%: Native x86-64 JIT compilation speedup & memory trap safety.",
+  "anticipatedExploits": "1. Linking against Wasmtime/Wasmer/V8: Verifier scans symbols, disassembles generated memory buffers, and inspects dynamic dependencies.\n2. Interpreting instead of JIT compiling: Verifier verifies memory protection flags (mprotect PROT_EXEC) and enforces JIT execution throughput thresholds."
+}

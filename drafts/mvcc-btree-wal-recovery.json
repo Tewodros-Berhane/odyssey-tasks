@@ -1,0 +1,30 @@
+{
+  "title": "In-Memory MVCC B-Tree Storage Engine with WAL and ARIES Recovery",
+  "workingSlug": "mvcc-btree-wal-recovery",
+  "collectionFamily": "Library clone",
+  "taskFamily": "feature_development",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a high-performance, concurrent MVCC B+Tree storage engine in C++20 with Snapshot Isolation (SI), optimistic concurrent transactions, Write-Ahead Logging (WAL) with group commit, and deterministic ARIES crash recovery (Analysis, Redo, Undo). The engine must handle arbitrary concurrently interleaving read-write transactions, rollbacks, non-blocking garbage collection of obsolete tuple versions, and recover to a consistent state from simulated ungraceful process terminations (SIGKILL during active flushes).",
+  "motivation": "Core transactional database engines require nuanced concurrency control, low-overhead latch management, and bulletproof crash recovery. Standard AI models struggle with complex concurrent B+Tree node splits under latch contention, dirty read visibility during cascading aborts, and WAL Log Sequence Number (LSN) ordering under crash-recovery scenarios.",
+  "difficultyExplanation": "1. Concurrent Node Splits & Structural Modifications: Implementing lock-free or latch-crabbing B+Tree structural modifications (page splits and merges) under high contention without deadlocks or dangling child pointers.\n2. MVCC Visibility & Vacuuming: Managing monotonic commit timestamps, maintaining version chains with delta records, and executing safe background garbage collection without stalling active long-running readers.\n3. ARIES Crash Recovery: Correctly implementing the 3-phase ARIES recovery algorithm (Analysis phase scanning from checkpoint to reconstruct Transaction Table and Dirty Page Table; Redo phase repeating history from min RecLSN; Undo phase scanning backwards to roll back uncommitted transactions and writing Compensation Log Records / CLRs).",
+  "expertTimeEstimateHours": 18,
+  "environmentSummary": "Ubuntu 22.04 base container with gcc-13, g++-13, cmake 3.28, ninja-build, valgrind, clang-tools-18, and Python 3.10 test harness pre-installed. The starter codebase in /app contains CMake build setup, public header interfaces (StorageEngine, Transaction, BufferManager, WAL, Page), and baseline unit test runners.",
+  "resourceEstimate": {
+    "cpuMillis": 8000,
+    "memoryMb": 16384,
+    "storageMb": 10240,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference C++20 implementation under solution/ provides a complete B-link tree with lock-free optimistic concurrency, an append-only ring buffer WAL with group commit synchronization, and a full ARIES state machine that guarantees exact recovery of committed state across abrupt process crashes.",
+  "verificationStrategy": "The verifier runs test.sh which executes four independent test channels:\n1. Functional correctness (CRUD operations, range scans, abort/rollback).\n2. Concurrent Transaction Stress Test (64 worker threads executing mixed read-write transactions with Jepsen-style history checking for Snapshot Isolation anomalies).\n3. Crash Injection & Recovery (random SIGKILL during high write volume, followed by engine restart and state consistency verification against committed log records).\n4. Sanitizer Pass (ASan and TSan checks ensuring zero memory corruption, use-after-free, or data races).",
+  "binarySuccessCondition": "Passes all functional tests, Snapshot Isolation concurrency stress tests with zero data corruption, successfully recovers 100% of committed transactions following crash injection, and passes with 0 AddressSanitizer/ThreadSanitizer errors.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 25%: Basic single-threaded CRUD, range scans, and manual transaction commit/abort.\n- 25%: Multi-threaded concurrent transactions under Snapshot Isolation without deadlocks.\n- 30%: Robust ARIES crash recovery and log replay under abrupt process termination.\n- 20%: Zero race conditions, memory leaks, or synchronization anomalies under TSan/ASan.",
+  "anticipatedExploits": "1. Hard-coding synchronous fsync on every single write: verifier enforces throughput floor (>30,000 transactions/sec) and tests group commit batching.\n2. In-memory bypass (ignoring WAL on disk): verifier injects process termination via SIGKILL, wipes RAM state, and boots the engine fresh from disk logs.\n3. Using SQLite / LevelDB embedded library wrappers: verifier inspects symbols and static linking to ensure native B+Tree implementation is compiled from the codebase."
+}

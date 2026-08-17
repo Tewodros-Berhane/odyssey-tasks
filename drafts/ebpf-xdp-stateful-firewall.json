@@ -1,0 +1,30 @@
+{
+  "title": "Stateful eBPF/XDP High-Speed Packet Filter with TCP Conntrack and Rate Limiting",
+  "workingSlug": "ebpf-xdp-stateful-firewall",
+  "collectionFamily": "Product clone",
+  "taskFamily": "systems_integration",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a high-performance stateful network firewall engine in C/C++ using Linux eBPF and XDP (eXpress Data Path). The engine must handle packet parsing (Ethernet, IPv4/IPv6, TCP, UDP, ICMP), bidirectional TCP connection state tracking (conntrack table managing SYN_SENT, ESTABLISHED, FIN_WAIT, CLOSED with timeout expiration and sequence validation), dynamic token-bucket rate limiting per CIDR subnet, and cryptographic SYN cookies to mitigate SYN flood attacks at 10M+ packets per second.",
+  "motivation": "Cloud-native perimeter defense and software-defined networks increasingly run packet filtering in the Linux kernel via eBPF/XDP. Writing production eBPF programs requires passing strict kernel BPF verifier constraints (bounded loops, memory access safety, atomic map updates) while preserving multi-million packet-per-second line rate performance.",
+  "difficultyExplanation": "1. Kernel BPF Verifier Constraints: Meeting strict kernel verifier safety rules (bounded loops, pointer arithmetic bounds, packet re-validation after helper calls) without falling back to slow user-space processing.\n2. Concurrent Conntrack Map Synchronization: Managing atomic LRU hash maps for millions of active flows under concurrent multi-core packet arrival without race conditions or memory leaks during TCP state transitions.\n3. SYN-Cookie Cryptographic Validation: Generating and validating stateless TCP sequence numbers containing encoded timestamp and MSS options in XDP before committing state to the connection tracking table.",
+  "expertTimeEstimateHours": 16,
+  "environmentSummary": "Ubuntu 24.04 container with Linux kernel 6.8 header packages, clang-18, llvm-18, libbpf-dev, iproute2, cmake, and a virtual network namespace packet generator testbed in /app. Starter repository includes BPF map definitions, user-space loader daemon skeletons, and network namespace unit tests.",
+  "resourceEstimate": {
+    "cpuMillis": 8000,
+    "memoryMb": 16384,
+    "storageMb": 10240,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference C implementation under solution/ provides verified XDP C bytecode hooks, atomic LRU hash maps for TCP conntrack, user-space configuration CLI via libbpf, and a SipHash-based SYN cookie generator.",
+  "verificationStrategy": "The verifier runs test.sh which executes four verification channels:\n1. 5-Tuple Static ACL & Packet Parsing (Ethernet, IPv4/IPv6, TCP/UDP headers and checksums).\n2. Stateful TCP Handshake & Teardown Verification (100k simulated client flows verifying sequence progression, out-of-order rejection, and idle timeout GC).\n3. SYN Flood Attack Mitigation (1M syn packets/sec testing stateless SYN-cookie validation and zero connection drop for valid traffic).\n4. Token-Bucket Rate Limiting & Verifier Safety (verifying BPF kernel verifier byte inspection with 0 errors and accurate CIDR PPS clamping).",
+  "binarySuccessCondition": "Passes 100% of stateful TCP transitions, clears Linux BPF verifier with 0 rejections, mitigates SYN flood simulation without dropping legitimate traffic, and enforces token-bucket limits.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 25%: Static 5-tuple packet parsing and basic ACL rules.\n- 25%: TCP 4-way handshake conntrack state machine & timer GC.\n- 25%: Token-bucket rate limiting per IP CIDR subnet.\n- 25%: SYN-cookie cryptographic generation and high-throughput flood mitigation.",
+  "anticipatedExploits": "1. Invoking host iptables/nftables CLI tools: Verifier inspects attached XDP BPF program file descriptors via bpftool and disables host iptables modules.\n2. User-space packet copy bottleneck: Verifier measures throughput floor to ensure filtering occurs inside XDP driver hook."
+}

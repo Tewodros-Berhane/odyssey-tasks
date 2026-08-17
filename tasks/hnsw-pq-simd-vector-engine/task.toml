@@ -1,0 +1,22 @@
+[metadata]
+name = "hnsw-pq-simd-vector-engine"
+title = "AVX-512 / AVX2 Accelerated HNSW Vector Graph with Product Quantization"
+slug = "hnsw-pq-simd-vector-engine"
+collection_family = "Algorithmic optimization"
+task_family = "performance"
+verifier_family = "optimization"
+
+[environment]
+cpus = 8
+memory_mb = 32768
+storage_mb = 20480
+gpus = 0
+network_mode = "none"
+
+[agent]
+timeout_sec = 28800
+network_mode = "none"
+
+[verifier]
+timeout_sec = 1800
+network_mode = "none"

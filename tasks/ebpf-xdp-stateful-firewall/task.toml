@@ -1,0 +1,22 @@
+[metadata]
+name = "ebpf-xdp-stateful-firewall"
+title = "Stateful eBPF/XDP High-Speed Packet Filter with TCP Conntrack and Rate Limiting"
+slug = "ebpf-xdp-stateful-firewall"
+collection_family = "Product clone"
+task_family = "systems_integration"
+verifier_family = "programmatic"
+
+[environment]
+cpus = 8
+memory_mb = 16384
+storage_mb = 10240
+gpus = 0
+network_mode = "none"
+
+[agent]
+timeout_sec = 28800
+network_mode = "none"
+
+[verifier]
+timeout_sec = 1800
+network_mode = "none"

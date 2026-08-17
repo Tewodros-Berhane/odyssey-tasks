@@ -1,0 +1,30 @@
+{
+  "title": "AVX-512 / AVX2 Accelerated HNSW Vector Graph with Product Quantization",
+  "workingSlug": "hnsw-pq-simd-vector-engine",
+  "collectionFamily": "Algorithmic optimization",
+  "taskFamily": "performance",
+  "verifierFamily": "optimization",
+  "objective": "Build a high-performance Hierarchical Navigable Small World (HNSW) vector search index accelerated with Product Quantization (PQ) and hand-optimized SIMD intrinsics (AVX2 / AVX-512 with scalar fallback) in C++20. The engine must support incremental vector insertion, dynamic heuristic neighbor pruning (M, efConstruction, efSearch), 8-bit asymmetric distance computation (ADC) lookups, and concurrent multi-threaded k-NN queries achieving >= 95% Recall@10 on 768-dimensional vector datasets with high query throughput (QPS).",
+  "motivation": "Vector similarity search powers modern semantic search, RAG retrieval pipelines, and multimodal AI. Achieving the Pareto frontier of recall vs. latency requires deep hardware-level understanding of memory cache hierarchies, prefetching, and vector SIMD instructions.",
+  "difficultyExplanation": "1. Asymmetric Distance Computation (ADC) SIMD Kernels: Implementing high-throughput distance estimation between unquantized query vectors and PQ-quantized centroids using AVX2/AVX-512 lookup and horizontal accumulation without cache line stalls.\n2. Concurrent HNSW Graph Construction: Maintaining multi-layer graph connectivity, bidirectional edge updates, and entry point transitions under concurrent insertions without locks on the fast read path.\n3. Heuristic Neighbor Pruning: Implementing diverse neighbor selection (Algorithm 4 in the Malkov-Yashunin HNSW paper) to prevent clustering in local graph minima and preserve recall at high compression ratios.",
+  "expertTimeEstimateHours": 14,
+  "environmentSummary": "Ubuntu 22.04 container with gcc-13, g++-13, cmake 3.28, ninja-build, valgrind, and Python 3.10 benchmark suites in /app. Pre-generated 768-dimensional normalized embedding datasets (10k train/test and 100k evaluation corpus) are bundled offline.",
+  "resourceEstimate": {
+    "cpuMillis": 8000,
+    "memoryMb": 32768,
+    "storageMb": 20480,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference C++20 implementation under solution/ provides an AVX2/AVX-512 SIMD-accelerated ADC distance lookup table, cache-aligned quantized codebooks, and a concurrent HNSW graph index with heuristic neighbor pruning.",
+  "verificationStrategy": "The verifier runs test.sh which executes four verification channels:\n1. Unit & Correctness Tests (PQ training, codebook quantization, basic k-NN graph traversal).\n2. Concurrent Graph Construction Stress (multi-threaded concurrent vector insertions and edge integrity validation).\n3. Recall & Throughput Benchmarks (measuring Recall@10 >= 0.95 and Query Throughput >= 10,000 QPS against ground-truth exact L2 brute-force calculation on 768-dim embeddings).\n4. Memory and Sanitizer Checks (AddressSanitizer and UndefinedBehaviorSanitizer passes).",
+  "binarySuccessCondition": "Achieves Recall@10 >= 0.92 and Throughput >= 8,000 QPS on the 768-dimensional benchmark dataset on 8 vCPUs with 0 sanitizer defects.",
+  "partialScoreStrategy": "Continuous monotone score calculated as: Score = clamp((Recall - 0.70) / 0.25, 0.0, 1.0) * min(1.0, QPS / 10000.0) * 100.",
+  "anticipatedExploits": "1. Exact brute-force scan: Mathematically impossible to meet the 10,000 QPS throughput threshold on 768-dim vectors using linear brute-force scan on 8 CPUs.\n2. Inverted index hacks / dimension truncation: Fails recall threshold (<0.70)."
+}

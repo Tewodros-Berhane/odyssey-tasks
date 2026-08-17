@@ -1,0 +1,22 @@
+[metadata]
+name = "mvcc-btree-wal-recovery"
+title = "In-Memory MVCC B-Tree Storage Engine with WAL and ARIES Recovery"
+slug = "mvcc-btree-wal-recovery"
+collection_family = "Library clone"
+task_family = "feature_development"
+verifier_family = "programmatic"
+
+[environment]
+cpus = 8
+memory_mb = 16384
+storage_mb = 10240
+gpus = 0
+network_mode = "none"
+
+[agent]
+timeout_sec = 28800
+network_mode = "none"
+
+[verifier]
+timeout_sec = 1800
+network_mode = "none"

@@ -1,0 +1,22 @@
+[metadata]
+name = "flash-attention-paged-triton"
+title = "Paged FlashAttention-2 Custom Kernel with Backward Pass and Variable-Length Packing"
+slug = "flash-attention-paged-triton"
+collection_family = "ML engineering"
+task_family = "performance"
+verifier_family = "programmatic"
+
+[environment]
+cpus = 8
+memory_mb = 32768
+storage_mb = 20480
+gpus = 0
+network_mode = "none"
+
+[agent]
+timeout_sec = 28800
+network_mode = "none"
+
+[verifier]
+timeout_sec = 1800
+network_mode = "none"

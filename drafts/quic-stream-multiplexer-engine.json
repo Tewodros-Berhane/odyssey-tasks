@@ -1,0 +1,30 @@
+{
+  "title": "Zero-Copy RFC 9000 QUIC Packet Demuxer and Flow Controller",
+  "workingSlug": "quic-stream-multiplexer-engine",
+  "collectionFamily": "Library clone",
+  "taskFamily": "feature_development",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a high-performance, zero-copy RFC 9000 / RFC 9002 QUIC packet parser, stream multiplexer, and flow controller in C++20. The engine must handle variable-length integer (varint) encoding/decoding, short and long header packet demuxing, out-of-order stream frame reassembly with gap tracking, connection-level and stream-level flow control (MAX_DATA / MAX_STREAM_DATA), and robust ACK frame generation with lost packet loss detection.",
+  "motivation": "QUIC underpins HTTP/3 and modern low-latency transport protocols. It combines transport, multiplexing, and cryptographic framing into complex state machines where subtle bitwise handling bugs or flow control calculation errors lead to deadlock, silent stream hangs, or denial-of-service vulnerabilities.",
+  "difficultyExplanation": "1. Bitwise Varint & Packet Number Decoding: Exact variable-length integer decoding (RFC 9000 Section 16) and reconstructing truncated packet numbers using sliding window arithmetic.\n2. Zero-Copy Stream Reassembly: Handling fragmented, overlapping, and out-of-order STREAM frames with non-contiguous byte ranges without allocating memory per chunk on the fast path.\n3. Flow Control State Machine: Coordinating bidirectional stream credit updates, window updates, and backpressure signals without deadlocking active streams under packet loss and jitter.",
+  "expertTimeEstimateHours": 16,
+  "environmentSummary": "Ubuntu 22.04 container with gcc-13, g++-13, cmake 3.28, ninja-build, valgrind, and Python 3.10 test runners pre-installed. The starter codebase in /app contains CMake setup, QUIC frame/packet header definitions, buffer abstractions, and initial loopback tests.",
+  "resourceEstimate": {
+    "cpuMillis": 8000,
+    "memoryMb": 8192,
+    "storageMb": 10240,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1200
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference C++20 implementation under solution/ provides zero-copy frame views, an interval-map stream assembler for overlapping ranges, and a deterministic flow control and ACK generation engine conforming to RFC 9000/9002.",
+  "verificationStrategy": "The verifier runs test.sh which executes four verification channels:\n1. RFC 9000 Varint & Frame Parsing Conformance (decoding short/long headers, STREAM, ACK, RESET_STREAM, MAX_DATA frames).\n2. Out-of-Order Stream Reassembly (pathological 1,000-chunk permutations with overlapping boundaries).\n3. 20% Packet Loss & Stream Flow Control Simulation (validating stream window updates and lossless reconstructed byte-streams).\n4. Malformed Packet Fuzzing (ensuring zero buffer over-reads, panics, or memory leaks on corrupt packet frames).",
+  "binarySuccessCondition": "Passes all RFC 9000 frame decoding tests, reassembles 100% of out-of-order / lost packet streams without corruption, adheres to MAX_DATA flow control constraints, and reports 0 memory errors under ASan.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 25%: RFC 9000 varint & frame parsing conformance.\n- 25%: Lossless stream reassembly under random chunk permutations.\n- 25%: Bidirectional stream flow control (MAX_DATA / MAX_STREAM_DATA).\n- 25%: Robustness against malformed/fuzzed frames and zero ASan leaks.",
+  "anticipatedExploits": "1. Buffering entire streams in unbounded memory to bypass flow control limits: verifier limits heap size and asserts stream backpressure triggers.\n2. Relying on TCP sockets for underlying framing: verifier feeds raw UDP payloads directly into memory buffers."
+}

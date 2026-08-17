@@ -1,0 +1,30 @@
+{
+  "title": "Paged FlashAttention-2 Custom Kernel with Backward Pass and Variable-Length Packing",
+  "workingSlug": "flash-attention-paged-triton",
+  "collectionFamily": "ML engineering",
+  "taskFamily": "performance",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a custom FlashAttention-2 GPU kernel in OpenAI Triton with complete Forward and Backward gradient passes, supporting Paged KV-Cache (non-contiguous memory block tables for high-throughput LLM serving), variable-length sequence packing (cu_seqlens), causal masking, and rotary position embedding (RoPE) in FP16/BF16. The implementation must match PyTorch scaled_dot_product_attention numerical accuracy (L_inf < 1e-3 on gradients) while achieving >= 65% theoretical FP16 tensor core TFLOPS on standard benchmark attention head dimensions.",
+  "motivation": "Attention layers dominate memory bandwidth during LLM training and autoregressive serving. Developing production kernels requires fine-grained control of GPU shared memory (SRAM), warp tile orchestration, online softmax rescaling, and paged memory coalescing.",
+  "difficultyExplanation": "1. Online Softmax Numerics in SRAM: Maintaining running maximums and normalizers across SRAM tiles to avoid FP16 underflow/overflow without materializing the O(N^2) attention matrix.\n2. Backward Pass Gradient Mathematics: Recomputing attention weights dynamically in SRAM during the backward pass and calculating exact analytical derivatives for dQ, dK, and dV with numerical stability.\n3. Paged KV-Cache Memory Indirection: Indexing non-contiguous physical memory pages for Key/Value states without causing warp divergence or breaking vectorized load alignments.",
+  "expertTimeEstimateHours": 16,
+  "environmentSummary": "Ubuntu 22.04 container with Python 3.10, PyTorch 2.3, CUDA 12.4 toolkit, OpenAI Triton 2.3.0, and standard LLM attention benchmark suites pre-installed in /app. Starter repository contains kernel entry points, reference CPU/PyTorch implementations, and test harnesses.",
+  "resourceEstimate": {
+    "cpuMillis": 8000,
+    "memoryMb": 32768,
+    "storageMb": 20480,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference Triton kernel under solution/ implements 2D/3D grid block scheduling, shared memory double buffering, fused causal masking, and atomic reduction for backward gradient accumulation.",
+  "verificationStrategy": "The verifier runs test.sh which executes four verification channels:\n1. Forward Pass Precision Check (comparing output tensors against torch.nn.functional.scaled_dot_product_attention across sequence lengths 512 to 8192).\n2. Backward Autograd Gradient Verification (torch.autograd.gradcheck asserting analytical gradients dQ, dK, dV match numerical finite-difference gradients with L_inf < 1e-3).\n3. Paged KV-Cache Serving Benchmark (validating correct token generation and page table lookups on batched non-contiguous memory allocations).\n4. Throughput & TFLOPS Evaluation (measuring kernel execution latency and verifying performance floor >= 65% peak tensor core TFLOPS).",
+  "binarySuccessCondition": "Passes forward and backward gradient checks with absolute error <= 1e-3, supports paged KV-cache indirection, and achieves >= 65% peak compute efficiency.",
+  "partialScoreStrategy": "Continuous monotone score calculated as: Score = clamp((1.0 - max_grad_error / 0.01), 0.0, 1.0) * min(1.0, TFLOPS / Target_TFLOPS) * 100.",
+  "anticipatedExploits": "1. Invoking stock PyTorch sdpa: Verifier passes non-contiguous paged block tables that stock PyTorch functions reject, and inspects Triton JIT kernel launch traces.\n2. Returning uncomputed dummy tensors for backward pass: Verifier evaluates autograd loss backpropagation and checks gradient norms."
+}

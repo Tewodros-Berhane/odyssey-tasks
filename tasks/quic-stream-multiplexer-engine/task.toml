@@ -1,0 +1,22 @@
+[metadata]
+name = "quic-stream-multiplexer-engine"
+title = "Zero-Copy RFC 9000 QUIC Packet Demuxer and Flow Controller"
+slug = "quic-stream-multiplexer-engine"
+collection_family = "Library clone"
+task_family = "feature_development"
+verifier_family = "programmatic"
+
+[environment]
+cpus = 8
+memory_mb = 8192
+storage_mb = 10240
+gpus = 0
+network_mode = "none"
+
+[agent]
+timeout_sec = 28800
+network_mode = "none"
+
+[verifier]
+timeout_sec = 1200
+network_mode = "none"

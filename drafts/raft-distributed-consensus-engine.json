@@ -1,0 +1,30 @@
+{
+  "title": "Production-Grade Distributed Raft Consensus Engine with Pre-Vote & Dynamic Reconfiguration",
+  "workingSlug": "raft-distributed-consensus-engine",
+  "collectionFamily": "Product clone",
+  "taskFamily": "systems_integration",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a complete, production-grade distributed Raft consensus cluster engine in C++20. The implementation must support Leader Election with randomized election timers, Log Replication, persistent state management, Log Compaction & Snapshotting (InstallSnapshot RPC), Pre-Vote protocol extension to prevent disruptive re-elections during network partitions, Linearizable Reads (ReadIndex optimization), and Joint Consensus dynamic cluster membership reconfiguration (C_old -> C_old_new -> C_new).",
+  "motivation": "Distributed consensus engines (such as etcd, TiKV, CockroachDB) form the backbone of reliable cloud infrastructure. Minor state-machine oversights during uncommitted log overwrites, split-brain scenarios after asymmetric network partitions, or concurrent membership reconfigurations routinely induce catastrophic data loss.",
+  "difficultyExplanation": "1. Asymmetric Network Partitions & Pre-Vote: Preventing partitioned nodes from incrementing election terms and stepping down the active leader upon reconnecting by executing non-disruptive pre-vote rounds.\n2. Joint Consensus Dynamic Membership Changes: Safely migrating cluster membership across overlapping quorum sets without split-brain or downtime.\n3. Log Compaction & Streaming Snapshot Transfer: Managing log truncation and atomic snapshot installation for lagging/recovering replicas while simultaneously processing concurrent client write requests.",
+  "expertTimeEstimateHours": 18,
+  "environmentSummary": "Debian 12 container with gcc-13, g++-13, cmake 3.28, ninja-build, valgrind, and Python 3.10 network chaos testbed in /app. Starter code includes RPC message abstractions, Raft state machine interfaces, storage backend contracts, and basic mock transport harnesses.",
+  "resourceEstimate": {
+    "cpuMillis": 8000,
+    "memoryMb": 16384,
+    "storageMb": 10240,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference C++20 implementation under solution/ provides a fully asynchronous, event-driven Raft engine implementing Pre-Vote, Joint Consensus, snapshot stream serialization, and linearizable ReadIndex queries.",
+  "verificationStrategy": "The verifier runs test.sh which executes four verification channels:\n1. Unit & Cluster Election Tests (3-node and 5-node basic leader election and log replication).\n2. Jepsen-style Network Chaos Partitions (simulating dynamic partitions, bridge partitions, packet loss, and leader isolation).\n3. Dynamic Membership Changes (adding/removing nodes under continuous client traffic without downtime).\n4. Linearizable Read & Sanitizer Checks (validating linearizability of client read histories and 0 ASan defects).",
+  "binarySuccessCondition": "Passes 100% of network chaos partition tests, completes dynamic membership reconfigurations without split-brain, guarantees linearizability, and passes 0 sanitizer errors.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 25%: Basic leader election & log replication under normal operation.\n- 25%: Snapshot transfer (InstallSnapshot) & log compaction.\n- 25%: Pre-Vote resilience under asymmetric partitions.\n- 25%: Joint consensus membership transitions & linearizable reads.",
+  "anticipatedExploits": "1. Single-node centralized master bypass: Verifier simulates isolated virtual cluster nodes and verifies inter-node RPC exchanges.\n2. In-memory unpersisted log hacks: Verifier crashes processes and checks disk storage state against recovered logs."
+}
