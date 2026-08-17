@@ -1,0 +1,30 @@
+{
+  "title": "Differentiable Sparse Voxel Octree Renderer with Analytical Radiance Gradients",
+  "workingSlug": "differentiable-sparse-voxel-octree",
+  "collectionFamily": "ML engineering",
+  "taskFamily": "performance",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a high-performance, differentiable Sparse Voxel Octree (SVO) ray-tracing renderer in C++20 with AVX2/OpenMP acceleration and analytical backward gradient computation for 3D radiance field reconstruction. The engine must support Morton-order (Z-curve) bit-interleaved spatial hashing, multi-level DDA (Digital Differential Analyzer) ray marching with empty-space skipping, trilinear density and spherical harmonics (SH degree 2) color interpolation, and exact analytical backward passes computing gradients with respect to voxel densities and SH coefficients (d_sigma, d_c) from screen-space image loss.",
+  "motivation": "Real-time neural rendering and 3D radiance field optimization (NeRF, Gaussian Splatting, PlenOctrees) require ultra-fast ray marching through hierarchical spatial structures. Implementing a differentiable SVO tests spatial indexing, fast ray-box intersections, volume rendering physics, and analytical calculus on 3D data.",
+  "difficultyExplanation": "1. Hierarchical DDA Ray Traversal with Empty-Space Skipping: Efficiently stepping rays through sparse octree levels using bitwise child-mask tests and parametric t_min, t_max updates without branch divergence.\n2. Analytical Backward Volume Rendering Gradients: Deriving and implementing continuous adjoint derivatives for transmittance T_i = exp(-sum sigma_j delta_j) and alpha-compositing gradients (dLoss/d_sigma_k, dLoss/d_c_k) along ray paths without storing full O(R x S) activation volumes.\n3. Morton Code (Z-Order) Octree Bit Manipulations: Interleaving and de-interleaving 3D coordinates using bitwise magic numbers (_pdep_u32 / _pext_u32) for compact memory layouts.",
+  "expertTimeEstimateHours": 16,
+  "environmentSummary": "Debian 12 with gcc-13, clang-18, cmake, ninja-build, libomp-dev, and Python 3.10 verification harness in /app. Includes synthetic 3D test scenes and ground-truth multi-view camera datasets.",
+  "resourceEstimate": {
+    "cpuMillis": 8000,
+    "memoryMb": 16384,
+    "storageMb": 10240,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference C++20 implementation providing a bit-compressed octree representation, SIMD-accelerated DDA ray tracer, and an analytical backward pass for volume radiance gradients.",
+  "verificationStrategy": "The verifier runs test.sh which executes four verification channels:\n1. Morton Code & Octree Ray Traversal Correctness (bounding-box intersections and empty-space skipping).\n2. Analytical Backward Gradient Precision (comparing analytical gradients d_sigma, d_c against numerical finite differences with relative error < 10^-3).\n3. Multi-View 3D Reconstruction Convergence (fitting a sparse voxel radiance field to 20 multi-view images achieving PSNR >= 28.0 dB in <60s).\n4. Rendering Throughput Benchmark (>= 40 FPS at 800x800 resolution on 8 CPUs and 0 ASan errors).",
+  "binarySuccessCondition": "Analytical gradients match finite differences with error < 10^-3, held-out view PSNR >= 28.0 dB, and forward render frame rate >= 40 FPS.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 25%: Morton code encoding & octree ray traversal correctness.\n- 25%: Forward trilinear volume rendering & spherical harmonics color evaluation.\n- 25%: Analytical backward gradient accuracy (L_inf < 10^-3).\n- 25%: Reconstruction convergence (PSNR >= 28.0 dB) and render throughput.",
+  "anticipatedExploits": "1. Approximating backward pass with unweighted straight-through estimators: Verifier checks exact analytical gradient tolerances (L_inf < 10^-3) against ground-truth mathematical derivation.\n2. Dense grid fallback: Verifier tests scenes with high sparsity to ensure memory footprint stays within octree bounds."
+}

@@ -1,0 +1,30 @@
+{
+  "title": "Lock-Free Thread-Caching Memory Allocator with Hazard Pointers and Size-Class Arenas",
+  "workingSlug": "lockfree-memory-allocator-hazard",
+  "collectionFamily": "Product clone",
+  "taskFamily": "performance",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a production-grade, lock-free thread-caching dynamic memory allocator (similar to jemalloc / mimalloc) in C++20. The allocator must support segregated size-class bins (small, medium, large, huge pages), thread-local cache arenas with lock-free batch filling/flushing to a central slab repository, lock-free memory reclamation using Hazard Pointers and Epoch-Based Reclamation (EBR) to eliminate ABA issues during concurrent remote frees, NUMA-aware huge-page mmap allocations, and zero false-sharing cacheline padding under 64 concurrent allocating/deallocating threads.",
+  "motivation": "Multi-threaded scale-up engines (databases, web servers, high-frequency trading systems) suffer extreme lock contention and false sharing in stock allocators. Writing a lock-free memory allocator requires mastering low-level atomic primitives, cache line layout, kernel virtual memory paging, and safe deferred memory reclamation.",
+  "difficultyExplanation": "1. Lock-Free Central Slab Lists & ABA Avoidance: Managing atomic singly-linked lists of free spans/chunks across concurrent threads without locks or ABA corruption using Hazard Pointers or tagged 128-bit atomic pointers (cmpxchg16b).\n2. Thread-Local Cache Rebalancing: Implementing low-overhead batch transfers between private thread caches and shared arenas without causing memory leaks or lock-step thread stalling when threads terminate.\n3. Memory Fragmentation & Coalescing: Splitting and coalescing adjacent buddy spans in virtual address space while maintaining lock-free invariants and high allocation throughput (>20M ops/sec).",
+  "expertTimeEstimateHours": 18,
+  "environmentSummary": "Debian 12 container with gcc-13, clang-18, cmake, ninja-build, valgrind, and multi-threaded allocation benchmark suites in /app. Starter repository includes size-class bin tables, atomic freelist node definitions, hazard pointer record structures, and unit test suites.",
+  "resourceEstimate": {
+    "cpuMillis": 8000,
+    "memoryMb": 16384,
+    "storageMb": 10240,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference implementation featuring thread-local freelist bins, lock-free lockless span radices, Hazard Pointer reclamation lists, and dynamic mmap page management.",
+  "verificationStrategy": "The verifier runs test.sh which executes four verification channels:\n1. Basic Malloc/Free & Alignment Correctness (16-byte, 64-byte, 4096-byte alignment, realloc, and bounds checks).\n2. Multi-Threaded Producer-Consumer Stress (32 producer threads allocating objects passed across lock-free queues to 32 consumer threads deallocating them).\n3. Heap Fragmentation & Resident Memory Bloat Test (1M randomized allocations/deallocations measuring RSS overhead < 15%).\n4. ThreadSanitizer & AddressSanitizer Validation (zero race conditions, double-frees, or use-after-free anomalies).",
+  "binarySuccessCondition": "Zero memory corruption or data races across 64-thread allocation stress tests, RSS memory bloat < 15%, and throughput >= 15M alloc/sec on 8 CPUs.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 25%: Single-threaded size-class allocation & alignment correctness.\n- 25%: Thread-local caching & batch slab synchronization.\n- 25%: Hazard pointer lock-free remote deallocation without ABA corruption.\n- 25%: Multi-threaded throughput speedup & zero TSan/ASan violations.",
+  "anticipatedExploits": "1. Wrapping system malloc/free directly: Verifier intercepts libc malloc symbols and checks custom span header tags in allocated blocks.\n2. Global mutex locking: Verifier tests 64-thread allocation throughput ceiling (>15M alloc/sec) which mutex-based allocators fail under contention."
+}

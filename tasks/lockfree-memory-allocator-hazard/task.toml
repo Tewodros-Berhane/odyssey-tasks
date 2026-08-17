@@ -1,0 +1,22 @@
+[metadata]
+name = "lockfree-memory-allocator-hazard"
+title = "Lock-Free Thread-Caching Memory Allocator with Hazard Pointers and Size-Class Arenas"
+slug = "lockfree-memory-allocator-hazard"
+collection_family = "Product clone"
+task_family = "performance"
+verifier_family = "programmatic"
+
+[environment]
+cpus = 8
+memory_mb = 16384
+storage_mb = 10240
+gpus = 0
+network_mode = "none"
+
+[agent]
+timeout_sec = 28800
+network_mode = "none"
+
+[verifier]
+timeout_sec = 1800
+network_mode = "none"
