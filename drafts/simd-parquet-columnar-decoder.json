@@ -1,0 +1,30 @@
+{
+  "title": "Zero-Copy SIMD Columnar Parquet Decoder with Predicate Pushdown",
+  "workingSlug": "simd-parquet-columnar-decoder",
+  "collectionFamily": "Library clone",
+  "taskFamily": "performance",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a high-performance, zero-copy Apache Parquet / Arrow columnar format decoder in C++20. The engine must support Parquet metadata parsing (Thrift schema headers, RowGroups, ColumnChunks), dictionary decoding, Run-Length Encoding (RLE), bit-packing with AVX2 SIMD acceleration, Snappy/ZSTD page decompression, and vectorized predicate pushdown evaluation (evaluating boolean filters like col > 100 AND col < 500 directly on encoded bit-packed streams to skip decompression of non-matching RowGroups).",
+  "motivation": "Analytical query engines (DuckDB, ClickHouse, Apache Arrow) rely on vectorized columnar readers for ultra-high scan throughput. Implementing a clean, zero-copy Parquet decoder from scratch tests bitwise manipulation, SIMD unpack algorithms, memory-mapped I/O, and columnar filter evaluation.",
+  "difficultyExplanation": "1. SIMD Bit-Unpacking Kernels: Implementing AVX2/NEON parallel bit-unpacking routines (e.g. 1-bit to 32-bit width unpacking) that unpack 32 integers per SIMD register without scalar branch loops.\n2. Definition & Repetition Level Decoding: Decoding variable-depth nested schemas using hybrid RLE/Bit-Packed level encoders to correctly reconstruct null bitmaps and nested list offsets.\n3. Zero-Copy Predicate Pushdown: Evaluating min/max page statistics and dictionary indices directly in compressed page buffers to prune whole RowGroups without materializing columnar arrays.",
+  "expertTimeEstimateHours": 16,
+  "environmentSummary": "Debian 12 with gcc-13, clang-18, cmake, ninja-build, libsnappy-dev, libzstd-dev, and pre-generated multi-gigabyte Parquet test datasets in /app. Starter repository includes Parquet Thrift struct definitions, bit-unpacking kernel templates, and Arrow batch export interfaces.",
+  "resourceEstimate": {
+    "cpuMillis": 8000,
+    "memoryMb": 16384,
+    "storageMb": 10240,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference C++20 decoder implementing fast bit-unpacking SIMD tables, compact Thrift schema parser, and an Arrow RecordBatch zero-copy exporter.",
+  "verificationStrategy": "The verifier runs test.sh which executes four verification channels:\n1. Basic Parquet Thrift Header Parsing & Plain Encoding Decoding.\n2. Dictionary & RLE / Bit-Packed SIMD Decoding (verifying exact element recovery across all bit-widths from 1 to 32).\n3. Snappy & ZSTD Compressed Page Decompression.\n4. Predicate Pushdown Filter Evaluation & Throughput Speedup (measuring >= 2.0 GB/s scan throughput).",
+  "binarySuccessCondition": "100% exact match against Apache Arrow reference decoding on all test datasets, predicate pushdown successfully prunes pages, and scan throughput >= 2.0 GB/s.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 25%: Basic Parquet Thrift header parsing & plain encoding decoding.\n- 25%: Dictionary & RLE / Bit-Packed SIMD decoding.\n- 25%: Snappy & ZSTD compressed page decompression.\n- 25%: Predicate pushdown filter evaluation & throughput speedup.",
+  "anticipatedExploits": "1. Linking against libparquet or arrow-cpp: Verifier checks static symbols and disassembles binaries to ensure custom SIMD kernels are compiled directly from source.\n2. Eagerly decompressing all pages when predicate pushdown is tested: Verifier measures memory bandwidth and CPU cycles to verify pruned RowGroups are skipped zero-copy."
+}
