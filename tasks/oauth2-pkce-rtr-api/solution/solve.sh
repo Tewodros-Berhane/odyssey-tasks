@@ -41,15 +41,51 @@ def init_db():
 EOF
 
 cat << 'EOF' > /app/main.py
+import uuid
+import hashlib
+import base64
+import time
+import jwt
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from models import AuthorizeRequest, TokenRequest, IntrospectRequest, RevokeRequest, DeviceCodeRequest
 from database import init_db, get_db
-import uuid
-import hashlib
-import base64
 
 app = FastAPI()
+
+# Generate Ephemeral RSA Keypair for RS256 JWT signing
+private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+public_key = private_key.public_key()
+public_numbers = public_key.public_numbers()
+
+def int_to_base64url(val: int) -> str:
+    val_bytes = val.to_bytes((val.bit_length() + 7) // 8, byteorder='big')
+    return base64.urlsafe_b64encode(val_bytes).rstrip(b'=').decode('ascii')
+
+jwk_n = int_to_base64url(public_numbers.n)
+jwk_e = int_to_base64url(public_numbers.e)
+KID = "auth-key-2026-01"
+
+pem_private = private_key.private_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PrivateFormat.PKCS8,
+    encryption_algorithm=serialization.NoEncryption()
+).decode('ascii')
+
+def mint_jwt(sub: str, scope: str, expires_in: int = 3600) -> str:
+    now = int(time.time())
+    payload = {
+        "iss": "https://auth.example.com",
+        "sub": sub,
+        "aud": "https://api.example.com",
+        "iat": now,
+        "exp": now + expires_in,
+        "scope": scope,
+        "jti": uuid.uuid4().hex
+    }
+    return jwt.encode(payload, pem_private, algorithm="RS256", headers={"kid": KID})
 
 @app.on_event("startup")
 def startup():
@@ -63,7 +99,8 @@ async def openid_config():
         "token_endpoint": "https://auth.example.com/oauth/token",
         "jwks_uri": "https://auth.example.com/.well-known/jwks.json",
         "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code", "refresh_token", "client_credentials", "urn:ietf:params:oauth:grant-type:device_code"]
+        "grant_types_supported": ["authorization_code", "refresh_token", "client_credentials", "urn:ietf:params:oauth:grant-type:device_code"],
+        "id_token_signing_alg_values_supported": ["RS256"]
     }
 
 @app.get("/.well-known/jwks.json")
@@ -72,11 +109,11 @@ async def jwks():
         "keys": [
             {
                 "kty": "RSA",
-                "kid": "key-2026-01",
+                "kid": KID,
                 "use": "sig",
                 "alg": "RS256",
-                "n": "u1W1x...",
-                "e": "AQAB"
+                "n": jwk_n,
+                "e": jwk_e
             }
         ]
     }
@@ -109,9 +146,9 @@ async def token(payload: TokenRequest):
                 
             conn.execute("UPDATE auth_codes SET used = 1 WHERE code = ?", (code,))
             family_id = f"fam_{uuid.uuid4().hex}"
-            at = f"at_{uuid.uuid4().hex}"
-            rt = f"rt_{uuid.uuid4().hex}"
             scope = row["scope"]
+            at = mint_jwt(sub=payload.client_id, scope=scope, expires_in=3600)
+            rt = f"rt_{uuid.uuid4().hex}"
             
             conn.execute("INSERT INTO tokens (token, family_id, token_type, scope, status) VALUES (?, ?, 'access_token', ?, 'active')", (at, family_id, scope))
             conn.execute("INSERT INTO tokens (token, family_id, token_type, scope, status) VALUES (?, ?, 'refresh_token', ?, 'active')", (rt, family_id, scope))
@@ -132,18 +169,18 @@ async def token(payload: TokenRequest):
                 
             # Valid rotation
             conn.execute("UPDATE tokens SET status = 'used' WHERE token = ?", (rt,))
-            new_at = f"at_{uuid.uuid4().hex}"
-            new_rt = f"rt_{uuid.uuid4().hex}"
             scope = row["scope"]
+            new_at = mint_jwt(sub="user", scope=scope, expires_in=3600)
+            new_rt = f"rt_{uuid.uuid4().hex}"
             conn.execute("INSERT INTO tokens (token, family_id, token_type, scope, status) VALUES (?, ?, 'access_token', ?, 'active')", (new_at, row["family_id"], scope))
             conn.execute("INSERT INTO tokens (token, family_id, token_type, scope, status) VALUES (?, ?, 'refresh_token', ?, 'active')", (new_rt, row["family_id"], scope))
             
             return {"access_token": new_at, "token_type": "Bearer", "refresh_token": new_rt, "expires_in": 3600, "scope": scope}
             
     elif payload.grant_type == "client_credentials":
-        at = f"m2m_at_{uuid.uuid4().hex}"
-        family_id = f"m2m_fam_{uuid.uuid4().hex}"
         scope = payload.scope or "service"
+        at = mint_jwt(sub=payload.client_id or "m2m_client", scope=scope, expires_in=7200)
+        family_id = f"m2m_fam_{uuid.uuid4().hex}"
         with conn:
             conn.execute("INSERT INTO tokens (token, family_id, token_type, scope, status) VALUES (?, ?, 'access_token', ?, 'active')", (at, family_id, scope))
         return {"access_token": at, "token_type": "Bearer", "expires_in": 7200, "scope": scope}
@@ -160,7 +197,7 @@ async def introspect(payload: IntrospectRequest):
         "active": True,
         "scope": row["scope"],
         "token_type": row["token_type"],
-        "exp": 1893456000
+        "exp": int(time.time()) + 3600
     }
 
 @app.post("/oauth/revoke")

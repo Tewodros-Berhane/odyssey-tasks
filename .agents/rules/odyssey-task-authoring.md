@@ -81,3 +81,15 @@ To prevent automated validation rejections during the intake and oracle/nop exec
     - Set `agentTimeoutSec`: 28800 (8 hours) to reflect true long-horizon evaluation.
     - Set `verifierTimeoutSec`: 1800 (30 minutes).
   - **Multi-Module Depth**: Separate concerns across data models, crypto/hash engines, background workers, storage tables, and protocol validation.
+
+### 7. Rubric Review & 4-Way Spec Alignment Guarantee (`The task didn't meet the bar in an automated validation check`)
+- **Root Cause**: The Odyssey Rubric Review stage employs an automated LLM judge that performs an exact 4-way consistency and quality evaluation across:
+  1. **Draft Metadata** (`drafts/*.json`)
+  2. **Problem Statement** (`instruction.md`)
+  3. **Starter Environment** (`environment/app/` — `main.py`, `models.py`, `database.py`, and `environment/tests/public_test.py`)
+  4. **Sealed Verifier & Reference Solution** (`tests/hidden_verifier.py` and `solution/solve.sh`)
+- **Requirements to Pass Rubric Review**:
+  - **Complete Starter Stubs**: Every single endpoint mentioned in `instruction.md` must exist as a typed stub in `environment/app/main.py` (raising `HTTPException(status_code=501)` or returning a starter response). Never leave route paths absent from `main.py`.
+  - **Synchronized Schema & Models**: All database tables (`sagas`, `steps`, `journal`, etc.) and Pydantic models must be fully declared in `environment/app/database.py` and `environment/app/models.py`.
+  - **Meaningful Public Smoke Tests**: `environment/tests/public_test.py` must perform actual schema and route table sanity checks (e.g. asserting all declared API routes exist in `app.routes`), rather than trivial 1-line stubs.
+  - **Clean JSON Formatting**: Ensure `title` and all string fields in `drafts/*.json` are clean, well-formatted strings without stray trailing quotes or unescaped characters.

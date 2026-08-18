@@ -3,6 +3,9 @@ import hashlib
 import base64
 import uuid
 import time
+import jwt
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
 from fastapi.testclient import TestClient
 from main import app
 from database import init_db
@@ -31,6 +34,10 @@ def test_authorize_and_issue():
     assert "access_token" in data
     assert "refresh_token" in data
     assert data.get("token_type") == "Bearer"
+    
+    # Verify JWT is well-formed with 3 parts
+    parts = data["access_token"].split(".")
+    assert len(parts) == 3
 
 def test_pkce_padding_strictness():
     v = "a" * 50
@@ -80,7 +87,10 @@ def test_jwks_and_oidc_discovery():
     jwks = r_jwks.json()
     assert "keys" in jwks
     assert len(jwks["keys"]) > 0
-    assert jwks["keys"][0]["kty"] == "RSA"
+    key = jwks["keys"][0]
+    assert key["kty"] == "RSA"
+    assert "n" in key
+    assert "e" in key
 
 def test_token_introspection_and_revocation():
     v, c = generate_pkce_pair()
