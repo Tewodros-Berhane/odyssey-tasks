@@ -178,3 +178,11 @@ To prevent automated validation rejections during the intake and oracle/nop exec
   - **Synchronized Schema & Models**: All database tables (`sagas`, `steps`, `journal`, etc.) and Pydantic models must be fully declared in `environment/app/database.py` and `environment/app/models.py`.
   - **Meaningful Public Smoke Tests**: `environment/tests/public_test.py` must perform actual schema and route table sanity checks (e.g. asserting all declared API routes exist in `app.routes`), rather than trivial 1-line stubs.
   - **Clean JSON Formatting**: Ensure `title` and all string fields in `drafts/*.json` are clean, well-formatted strings without stray trailing quotes or unescaped characters.
+
+### 8. Trial Envelope Ceiling & Agent Timeout Limits (`Above 37000s (~10h)`)
+- **Root Cause**: The total per-trial execution ceiling (Build + Agent + Verify + Teardown) is strictly capped at **14 hours (50,400 seconds)** across all phases.
+- **Rules & Recommended Bounds**:
+  - **`agentTimeoutSec`**: Must be **$\le 36,000$ seconds (10 hours)**. The standard recommended setting for long-horizon tasks is **`28800` seconds (8 hours)**.
+  - Setting `agentTimeoutSec: 43200` (12h) causes an intake validation error: *"Above 37000s (~10h) — leave room for build, verify, teardown, which share a trial's 14h wall-clock limit"*.
+  - **`verifierTimeoutSec`**: Set to **`1800` seconds (30 minutes)**.
+  - **`expertTimeEstimateHours`**: Set between **`16` and `20` hours** (this is a human effort estimate and is independent of the agent execution timeout).

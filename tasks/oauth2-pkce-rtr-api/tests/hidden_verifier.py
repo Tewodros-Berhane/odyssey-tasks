@@ -3,6 +3,7 @@ import hashlib
 import base64
 import uuid
 import time
+import json
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
@@ -12,68 +13,142 @@ from database import init_db
 
 client = TestClient(app)
 
+# Helper: client RSA keypair for generating DPoP proofs
+client_priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+client_pub = client_priv.public_key()
+client_pub_num = client_pub.public_numbers()
+
+def int_to_b64(val: int) -> str:
+    val_bytes = val.to_bytes((val.bit_length() + 7) // 8, byteorder="big")
+    return base64.urlsafe_b64encode(val_bytes).rstrip(b"=").decode("ascii")
+
+client_jwk = {
+    "kty": "RSA",
+    "n": int_to_b64(client_pub_num.n),
+    "e": int_to_b64(client_pub_num.e)
+}
+
+client_pem_priv = client_priv.private_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PrivateFormat.PKCS8,
+    encryption_algorithm=serialization.NoEncryption()
+).decode("ascii")
+
+def create_dpop_proof(htm: str, htu: str, ath: str = None, jti: str = None) -> str:
+    now = int(time.time())
+    payload = {
+        "jti": jti or uuid.uuid4().hex,
+        "htm": htm,
+        "htu": htu,
+        "iat": now
+    }
+    if ath:
+        payload["ath"] = ath
+    headers = {
+        "typ": "dpop+jwt",
+        "alg": "RS256",
+        "jwk": client_jwk
+    }
+    return jwt.encode(payload, client_pem_priv, algorithm="RS256", headers=headers)
+
 @pytest.fixture(autouse=True)
 def setup():
     init_db()
 
 def generate_pkce_pair(verifier_len=43):
-    verifier = base64.urlsafe_b64encode(uuid.uuid4().bytes * 4)[:verifier_len].decode('ascii')
-    digest = hashlib.sha256(verifier.encode('ascii')).digest()
-    challenge = base64.urlsafe_b64encode(digest).rstrip(b'=').decode('ascii')
+    verifier = base64.urlsafe_b64encode(uuid.uuid4().bytes * 4)[:verifier_len].decode("ascii")
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
     return verifier, challenge
 
-def test_authorize_and_issue():
+def test_pushed_authorization_requests_par():
     v, c = generate_pkce_pair()
-    r = client.post("/oauth/authorize", json={"client_id": "client1", "response_type": "code", "code_challenge": c, "code_challenge_method": "S256", "scope": "read:profile"})
+    # 1. Push authorization request
+    r_par = client.post("/oauth/par", json={
+        "client_id": "par_client_1",
+        "response_type": "code",
+        "code_challenge": c,
+        "code_challenge_method": "S256",
+        "scope": "openid profile"
+    })
+    assert r_par.status_code == 201
+    par_data = r_par.json()
+    assert "request_uri" in par_data
+    assert par_data.get("expires_in") == 60
+    req_uri = par_data["request_uri"]
+
+    # 2. Authorize using request_uri
+    r_auth = client.post("/oauth/authorize", json={"request_uri": req_uri})
+    assert r_auth.status_code == 200
+    code = r_auth.json()["authorization_code"]
+
+    # 3. Exchange code for token
+    r_tok = client.post("/oauth/token", json={
+        "grant_type": "authorization_code",
+        "client_id": "par_client_1",
+        "code": code,
+        "code_verifier": v
+    })
+    assert r_tok.status_code == 200
+    assert "access_token" in r_tok.json()
+
+def test_pkce_authorization_code_and_padding_strictness():
+    v = "a" * 50
+    digest = hashlib.sha256(v.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+    r = client.post("/oauth/authorize", json={"client_id": "client_pkce", "response_type": "code", "code_challenge": challenge, "code_challenge_method": "S256"})
     assert r.status_code == 200
     code = r.json()["authorization_code"]
 
-    r2 = client.post("/oauth/token", json={"grant_type": "authorization_code", "client_id": "client1", "code": code, "code_verifier": v})
+    r2 = client.post("/oauth/token", json={"grant_type": "authorization_code", "client_id": "client_pkce", "code": code, "code_verifier": v})
     assert r2.status_code == 200
-    data = r2.json()
-    assert "access_token" in data
-    assert "refresh_token" in data
-    assert data.get("token_type") == "Bearer"
-    
-    # Verify JWT is well-formed with 3 parts
-    parts = data["access_token"].split(".")
-    assert len(parts) == 3
-
-def test_pkce_padding_strictness():
-    v = "a" * 50
-    digest = hashlib.sha256(v.encode('ascii')).digest()
-    challenge = base64.urlsafe_b64encode(digest).rstrip(b'=').decode('ascii')
-    
-    r = client.post("/oauth/authorize", json={"client_id": "client1", "response_type": "code", "code_challenge": challenge, "code_challenge_method": "S256"})
-    code = r.json()["authorization_code"]
-    
-    r2 = client.post("/oauth/token", json={"grant_type": "authorization_code", "client_id": "client1", "code": code, "code_verifier": v})
-    assert r2.status_code == 200
+    assert len(r2.json()["access_token"].split(".")) == 3
 
 def test_refresh_token_rotation_and_cascade():
     v, c = generate_pkce_pair()
     code = client.post("/oauth/authorize", json={"client_id": "c2", "response_type": "code", "code_challenge": c, "code_challenge_method": "S256"}).json()["authorization_code"]
     t1 = client.post("/oauth/token", json={"grant_type": "authorization_code", "client_id": "c2", "code": code, "code_verifier": v}).json()
     rt1 = t1["refresh_token"]
-    
-    # Rotate 1
+
     t2 = client.post("/oauth/token", json={"grant_type": "refresh_token", "client_id": "c2", "refresh_token": rt1}).json()
     rt2 = t2["refresh_token"]
     assert rt1 != rt2
 
-    # Rotate 2
     t3 = client.post("/oauth/token", json={"grant_type": "refresh_token", "client_id": "c2", "refresh_token": rt2}).json()
     rt3 = t3["refresh_token"]
     assert rt2 != rt3
 
-    # ATTACK: Replay rt1 (already used)
+    # ATTACK: Replay rt1
     r_attack = client.post("/oauth/token", json={"grant_type": "refresh_token", "client_id": "c2", "refresh_token": rt1})
     assert r_attack.status_code == 400
     assert "invalid_grant" in r_attack.json().get("error", "")
 
-    # VERIFY CASCADE: rt3 (the newest valid token) must now be revoked
+    # Cascade check: rt3 revoked
     r_check = client.post("/oauth/token", json={"grant_type": "refresh_token", "client_id": "c2", "refresh_token": rt3})
     assert r_check.status_code == 400
+
+def test_dpop_proof_of_possession_and_replay():
+    v, c = generate_pkce_pair()
+    code = client.post("/oauth/authorize", json={"client_id": "dpop_client", "response_type": "code", "code_challenge": c, "code_challenge_method": "S256"}).json()["authorization_code"]
+    
+    # 1. Issue DPoP-bound token
+    dpop_tok_proof = create_dpop_proof("POST", "http://testserver/oauth/token")
+    r_tok = client.post("/oauth/token", json={"grant_type": "authorization_code", "client_id": "dpop_client", "code": code, "code_verifier": v}, headers={"DPoP": dpop_tok_proof})
+    assert r_tok.status_code == 200
+    assert r_tok.json().get("token_type") == "DPoP"
+    at = r_tok.json()["access_token"]
+
+    # 2. Access protected resource with valid DPoP proof
+    res_url = "http://testserver/api/v1/protected/resource"
+    dpop_res_proof = create_dpop_proof("POST", res_url)
+    r_res = client.post("/api/v1/protected/resource", headers={"Authorization": f"DPoP {at}", "DPoP": dpop_res_proof})
+    assert r_res.status_code == 200
+    assert r_res.json().get("data") == "secure_resource"
+
+    # 3. REPLAY ATTACK: Reusing same DPoP proof (same jti) must return 401
+    r_replay = client.post("/api/v1/protected/resource", headers={"Authorization": f"DPoP {at}", "DPoP": dpop_res_proof})
+    assert r_replay.status_code == 401
 
 def test_jwks_and_oidc_discovery():
     r_disc = client.get("/.well-known/openid-configuration")
@@ -81,47 +156,35 @@ def test_jwks_and_oidc_discovery():
     disc = r_disc.json()
     assert "token_endpoint" in disc
     assert "jwks_uri" in disc
+    assert "pushed_authorization_request_endpoint" in disc
 
     r_jwks = client.get("/.well-known/jwks.json")
     assert r_jwks.status_code == 200
-    jwks = r_jwks.json()
-    assert "keys" in jwks
-    assert len(jwks["keys"]) > 0
-    key = jwks["keys"][0]
-    assert key["kty"] == "RSA"
-    assert "n" in key
-    assert "e" in key
+    assert len(r_jwks.json()["keys"]) > 0
+    assert r_jwks.json()["keys"][0]["kty"] == "RSA"
 
 def test_token_introspection_and_revocation():
     v, c = generate_pkce_pair()
-    code = client.post("/oauth/authorize", json={"client_id": "c3", "response_type": "code", "code_challenge": c, "code_challenge_method": "S256", "scope": "admin"}).json()["authorization_code"]
+    code = client.post("/oauth/authorize", json={"client_id": "c3", "response_type": "code", "code_challenge": c, "code_challenge_method": "S256"}).json()["authorization_code"]
     tokens = client.post("/oauth/token", json={"grant_type": "authorization_code", "client_id": "c3", "code": code, "code_verifier": v}).json()
     at = tokens["access_token"]
 
-    # Introspect active
     r_intro = client.post("/oauth/introspect", json={"token": at})
     assert r_intro.status_code == 200
     assert r_intro.json().get("active") is True
 
-    # Revoke
     r_rev = client.post("/oauth/revoke", json={"token": at})
     assert r_rev.status_code == 200
 
-    # Introspect after revocation
     r_intro2 = client.post("/oauth/introspect", json={"token": at})
     assert r_intro2.status_code == 200
     assert r_intro2.json().get("active") is False
 
 def test_client_credentials_and_device_flow():
-    # Client credentials
-    r_cc = client.post("/oauth/token", json={"grant_type": "client_credentials", "client_id": "m2m_client", "client_secret": "secret", "scope": "service"})
+    r_cc = client.post("/oauth/token", json={"grant_type": "client_credentials", "client_id": "m2m", "client_secret": "sec", "scope": "svc"})
     assert r_cc.status_code == 200
     assert "access_token" in r_cc.json()
 
-    # Device code authorization
-    r_dev = client.post("/oauth/device/code", json={"client_id": "smart_tv", "scope": "read"})
+    r_dev = client.post("/oauth/device/code", json={"client_id": "tv_client"})
     assert r_dev.status_code == 200
-    dev = r_dev.json()
-    assert "device_code" in dev
-    assert "user_code" in dev
-    assert "verification_uri" in dev
+    assert "device_code" in r_dev.json()

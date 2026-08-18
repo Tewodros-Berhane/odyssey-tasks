@@ -1,6 +1,6 @@
 [metadata]
-name = "Enterprise FAPI OAuth 2.0 & OIDC Authorization Server with DPoP (RFC 9449), PAR (RFC 9126), and PKCE"
-slug = "oauth2-pkce-rtr-api"
+name = "Idempotent Multi-Tenant Escrow & Double-Entry Ledger API with HMAC Reconciliation"
+slug = "idempotent-ledger-escrow-api"
 collection_family = "Product clone"
 task_family = "feature_development"
 verifier_family = "programmatic"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-export DB_PATH="/tmp/test_oauth.db"
-rm -f $DB_PATH
+export LEDGER_DB_PATH="/tmp/test_ledger.db"
+rm -f /tmp/test_ledger.db /tmp/test_ledger.db-wal /tmp/test_ledger.db-shm
 
 if [ -f "/tests/hidden_verifier.py" ]; then
     python3 -m pytest /tests/hidden_verifier.py -v --tb=short > /tmp/pytest_results.log 2>&1 || true
@@ -28,13 +28,12 @@ if os.path.exists("/tmp/pytest_results.log"):
         output = f.read()
 
 suites = {
-    "test_pushed_authorization_requests_par": 0.15,
-    "test_pkce_authorization_code_and_padding_strictness": 0.15,
-    "test_refresh_token_rotation_and_cascade": 0.15,
-    "test_dpop_proof_of_possession_and_replay": 0.20,
-    "test_jwks_and_oidc_discovery": 0.15,
-    "test_token_introspection_and_revocation": 0.10,
-    "test_client_credentials_and_device_flow": 0.10
+    "test_crud_and_initialization": 0.15,
+    "test_idempotency_and_hash_conflicts": 0.20,
+    "test_escrow_hold_capture_partial_and_void": 0.25,
+    "test_auto_expiration_and_temporal_release": 0.15,
+    "test_double_entry_zero_sum_invariants": 0.15,
+    "test_hmac_signature_and_clock_skew": 0.10
 }
 
 score = 0.0

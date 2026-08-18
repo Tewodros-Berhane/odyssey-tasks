@@ -1,43 +1,60 @@
-# Production OAuth 2.0 & OIDC Authorization Server with PKCE, RTR, and JWKS
+# Enterprise FAPI OAuth 2.0 & OIDC Authorization Server
 
 ## Overview
-Your objective is to implement a comprehensive, RFC-compliant OAuth 2.0 and OpenID Connect Authorization Server in Python/FastAPI using SQLite and Cryptography in `/app`.
+Your objective is to implement a Financial-grade API (FAPI) compliant OAuth 2.0 and OpenID Connect Authorization Server in Python/FastAPI using SQLite and Cryptography in `/app`.
 
-## Core Protocols & Specifications
+The application must support modern high-security profile specifications:
+1. **RFC 7636 (PKCE)**: S256 Code Exchange.
+2. **RFC 6749 & RTR**: Authorization Code, Refresh Token Rotation (RTR) with family-wide cascading invalidation upon reuse, and Client Credentials.
+3. **RFC 9126 (PAR)**: Pushed Authorization Requests with single-use 60s `request_uri`.
+4. **RFC 9449 (DPoP)**: Demonstrating Proof-of-Possession at the Application Layer with public key thumbprint binding (`cnf.jkt`) and `jti` replay caching.
+5. **RFC 7517 & RFC 8414**: Ephemeral RSA JWKS key rotation and OpenID Connect discovery.
+6. **RFC 7662 & RFC 7009**: Token Introspection and Revocation.
+7. **RFC 8628**: Device Authorization Grant.
 
-### 1. OpenID Connect Discovery & JWKS (RFC 8414, RFC 7517)
-- `GET /.well-known/openid-configuration`:
-  - Returns JSON containing `issuer`, `authorization_endpoint`, `token_endpoint`, `jwks_uri`, `response_types_supported`, `grant_types_supported`, `id_token_signing_alg_values_supported: ["RS256"]`.
-- `GET /.well-known/jwks.json`:
-  - Generates an RSA keypair on startup and publishes the public key as an RFC 7517 JWK containing `kty="RSA"`, `kid`, `use="sig"`, `alg="RS256"`, `n`, `e` (where `n` and `e` are unpadded Base64URL-encoded big-endian integer bytes).
+## Core API Endpoints
 
-### 2. PKCE Authorization Code Grant (RFC 7636 & RFC 6749)
+### 1. Discovery & JWKS (RFC 8414, RFC 7517)
+- `GET /.well-known/openid-configuration`: Returns OIDC discovery metadata including `pushed_authorization_request_endpoint`, `dpop_signing_alg_values_supported: ["RS256", "ES256"]`.
+- `GET /.well-known/jwks.json`: Returns public RSA signing keys with `kid`, `kty="RSA"`, `alg="RS256"`, `use="sig"`, `n`, `e`.
+
+### 2. Pushed Authorization Requests (PAR, RFC 9126)
+- `POST /oauth/par`:
+  - Ingests `client_id`, `response_type`, `code_challenge`, `code_challenge_method="S256"`, `redirect_uri`, and `scope`.
+  - Generates a short-lived `request_uri` (`urn:ietf:params:oauth:request_uri:<id>`) valid for 60 seconds.
+  - Returns `201 Created` with `{"request_uri": "...", "expires_in": 60}`.
+
+### 3. Authorization Code & PKCE (RFC 6749, RFC 7636)
 - `POST /oauth/authorize`:
-  - Ingests `client_id`, `response_type="code"`, `code_challenge`, `code_challenge_method="S256"`, and `scope`.
+  - Accepts standard authorization parameters or `request_uri` (resolving the pushed PAR payload).
   - Returns `{"authorization_code": "<code>"}`.
 - `POST /oauth/token` (grant_type: `authorization_code`):
-  - Ingests `code`, `code_verifier`, and `client_id`.
-  - Hashes `code_verifier` with SHA-256 and validates against the stored unpadded Base64URL `code_challenge`.
-  - Returns `200 OK` with `{"access_token": "<signed RS256 JWT>", "token_type": "Bearer", "refresh_token": "<opaque_rt>", "expires_in": 3600, "scope": "<scope>"}`.
+  - Ingests `code`, `code_verifier`, `client_id`.
+  - Optional `DPoP` HTTP header containing client's self-signed DPoP proof JWT.
+  - If `DPoP` header is provided: computes the client's JWK thumbprint (SHA-256 over canonical JWK) and embeds `{"cnf": {"jkt": "<thumbprint>"}}` in the minted RS256 JWT access token. Returns `{"token_type": "DPoP", "access_token": "...", "refresh_token": "...", "expires_in": 3600}`.
+  - If no DPoP header: returns standard `{"token_type": "Bearer", ...}`.
 
-### 3. Strict Refresh Token Rotation (RTR) & Token Family Cascade (RFC 6749)
+### 4. Strict Refresh Token Rotation (RTR) & Cascading Revocation
 - `POST /oauth/token` (grant_type: `refresh_token`):
   - Ingests `refresh_token`.
-  - **Normal Rotation:** If active, marks the current refresh token as `used`, issues a new RS256 signed JWT `access_token` and new `refresh_token` under the same `family_id`.
-  - **Replay Attack Trap:** If the presented refresh token has already been marked as `used`, immediately revoke the **entire token family** (setting status of all tokens in that family to `revoked`) and return `400 Bad Request` with top-level `{"error": "invalid_grant"}`.
+  - **Normal Rotation:** Marks token as `used`, issues new `access_token` and new `refresh_token` under the same `family_id`.
+  - **Reuse Trap:** If token is already `used`, immediately sets all tokens in that `family_id` to `revoked` and returns `400 Bad Request` with top-level `{"error": "invalid_grant"}`.
 
-### 4. Token Introspection & Revocation (RFC 7662 & RFC 7009)
-- `POST /oauth/introspect`:
-  - Ingests `token`. If token is active and not revoked, returns `{"active": true, "scope": "...", "sub": "...", "exp": ...}`. If revoked or unknown, returns `{"active": false}`.
-- `POST /oauth/revoke`:
-  - Ingests `token`. Marks the token status as `revoked` and returns `200 OK` with `{"ok": true}`.
+### 5. DPoP Proof Verification & Resource Access (RFC 9449)
+- `POST /api/v1/protected/resource`:
+  - Requires `Authorization` header (`DPoP <token>` or `Bearer <token>`) and `DPoP` header.
+  - Validates:
+    1. DPoP proof signature using public key in DPoP JWT `jwk` header.
+    2. `htm` matches HTTP method (`POST`) and `htu` matches request URL.
+    3. `jti` replay protection: Replayed `jti` returns `401 Unauthorized` with `{"error": "invalid_dpop_proof"}`.
+    4. Client's JWK thumbprint matches `cnf.jkt` claim inside access token.
+  - Returns `200 OK` with `{"data": "secure_resource", "sub": "..."}`.
 
-### 5. Client Credentials & Device Authorization Flow (RFC 6749 & RFC 8628)
-- `POST /oauth/token` (grant_type: `client_credentials`):
-  - Ingests `client_id`, `client_secret`, and `scope`. Returns a signed RS256 JWT `access_token`.
-- `POST /oauth/device/code`:
-  - Ingests `client_id` and `scope`. Issues `{"device_code": "...", "user_code": "...", "verification_uri": "...", "expires_in": 600, "interval": 5}`.
+### 6. Introspection, Revocation, and Device Flow
+- `POST /oauth/introspect` (RFC 7662): Returns `{"active": true, ...}` or `{"active": false}`.
+- `POST /oauth/revoke` (RFC 7009): Revokes token and returns `200 OK` with `{"ok": true}`.
+- `POST /oauth/device/code` (RFC 8628): Issues `device_code`, `user_code`, `verification_uri`, `interval`.
 
 ## Verification
-You can run the public smoke tests via `pytest /app/tests/public_test.py`.
-The sealed verifier validates all grant flows, cryptographic RS256 JWT signatures against JWKS, and cascading replay detection attacks.
+Public smoke tests can be run via `pytest /app/tests/public_test.py`.
+The sealed verifier asserts all 7 FAPI specification domains, DPoP proof-of-possession binding, and token family replay defenses.

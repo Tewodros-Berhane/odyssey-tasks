@@ -1,0 +1,30 @@
+{
+  "title": "Idempotent Multi-Tenant Escrow & Double-Entry Ledger API with HMAC Reconciliation",
+  "workingSlug": "idempotent-ledger-escrow-api",
+  "collectionFamily": "Product clone",
+  "taskFamily": "feature_development",
+  "verifierFamily": "programmatic",
+  "objective": "Implement an enterprise-grade, multi-tenant financial escrow engine and double-entry bookkeeping ledger in Python/FastAPI using SQLite and HMAC-SHA256. The system must support atomic balance tracking, zero-sum double-entry ledger journals, Idempotency-Key request deduplication with payload hash conflict detection (HTTP 422), two-phase escrow holds (authorization, partial capture, void, and lazy temporal expiration), and HMAC-SHA256 authenticated administrative reconciliation with clock skew protection.",
+  "motivation": "Financial platforms (Stripe, Modern Treasury, Escrow.com) require strict mathematical zero-sum ledger invariants, robust multi-tenant data isolation, and guaranteed exactly-once payment semantics to prevent double-spending and ledger inconsistencies under high-concurrency distributed traffic.",
+  "difficultyExplanation": "1. Double-Entry Zero-Sum Invariant: Every financial operation (transfers, hold authorizations, captures, releases) must write balanced debit/credit rows to the immutable ledger_entries table such that total net transaction sums strictly equal zero.\n2. Strict Idempotency & Conflict Semantics: Implementing atomic request fingerprinting in SQLite where replaying identical requests returns cached responses while mutated payloads with reused keys return HTTP 422 Unprocessable Entity.\n3. Escrow Hold Lifecycle & Lazy Expiration: Correctly separating total account balance from available balance across active, captured, voided, and temporally expired holds without financial race conditions.\n4. HMAC Timestamp Authentication: Validating constant-time HMAC-SHA256 request signatures with strict 300-second timestamp drift windows.",
+  "expertTimeEstimateHours": 16,
+  "environmentSummary": "Python 3.11-slim container with FastAPI, Uvicorn, Pytest, HTTPX, SQLite3, and pre-configured Pydantic schema models in /app.",
+  "resourceEstimate": {
+    "cpuMillis": 4000,
+    "memoryMb": 8192,
+    "storageMb": 4096,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference implementation in solution/ providing SQLite transaction boundaries, double-entry ledger bookkeeping, Idempotency-Key storage with SHA-256 fingerprinting, escrow hold state machines, and HMAC reconciliation.",
+  "verificationStrategy": "The verifier runs test.sh executing multi-stage hidden pytest suites evaluating:\n1. Account creation and balance initialization.\n2. Idempotency replay caching and payload mutation conflict rejection (422).\n3. Two-phase escrow hold, partial capture, settlement, and voiding.\n4. Temporal hold auto-expiration and lazy available balance releases.\n5. Global double-entry zero-sum mathematical invariants across all accounts.\n6. HMAC-SHA256 signature verification and clock skew validation.",
+  "binarySuccessCondition": "Passes 100% of all hidden test suites across all 6 financial invariant phases with full reward score >= 0.95.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 15%: Account CRUD and balance initialization.\n- 20%: Idempotency caching and payload hash conflict detection.\n- 25%: Two-phase escrow hold, partial capture, and voiding.\n- 15%: Temporal auto-expiration and lazy balance recalculation.\n- 15%: Double-entry zero-sum mathematical invariants.\n- 10%: HMAC signature validation and timestamp clock skew.",
+  "anticipatedExploits": "1. In-memory balance mutation: Verifier executes raw SQL sum queries across ledger_entries table.\n2. Single-entry shortcuts: Verifier asserts exact pair-wise debits and credits across all transactions."
+}
