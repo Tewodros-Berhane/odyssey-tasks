@@ -1,5 +1,5 @@
 [metadata]
-name = "Enterprise FAPI OAuth 2.0 & OIDC Authorization Server with DPoP (RFC 9449), PAR (RFC 9126), and PKCE"
+name = "Enterprise FAPI 2.0 Authorization Server with JWE, DPoP (RFC 9449), PAR, and Dynamic Client Registration"
 slug = "oauth2-pkce-rtr-api"
 collection_family = "Product clone"
 task_family = "feature_development"

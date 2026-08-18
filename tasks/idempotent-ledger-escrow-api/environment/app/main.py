@@ -21,7 +21,7 @@ def get_account(account_id: str):
     raise HTTPException(status_code=501, detail="Not Implemented")
 
 @app.post("/api/v1/transfers")
-async def transfer(req: Request, idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"), x_tenant_id: Optional[str] = Header("default", alias="X-Tenant-ID")):
+async def transfer(req: Request, payload: TransferRequest, idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"), x_tenant_id: Optional[str] = Header("default", alias="X-Tenant-ID")):
     # TODO: Implement Idempotent Transfer with Double-Entry Zero-Sum Ledger records
     raise HTTPException(status_code=501, detail="Not Implemented")
 

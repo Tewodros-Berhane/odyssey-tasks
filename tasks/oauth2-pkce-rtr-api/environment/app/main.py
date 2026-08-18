@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.responses import JSONResponse
 from typing import Optional
-from models import ParRequest, AuthorizeRequest, TokenRequest, IntrospectRequest, RevokeRequest, DeviceCodeRequest
+from models import ClientRegisterRequest, ParRequest, AuthorizeRequest, TokenRequest, IntrospectRequest, RevokeRequest, DeviceCodeRequest, DeviceVerifyRequest
 from database import init_db, get_db
 
 app = FastAPI()
@@ -20,6 +20,11 @@ async def jwks():
     # TODO: Implement JWKS Public Key Set endpoint (RFC 7517)
     raise HTTPException(status_code=501, detail="Not Implemented")
 
+@app.post("/oauth/register", status_code=201)
+async def register_client(payload: ClientRegisterRequest):
+    # TODO: Implement Dynamic Client Registration (RFC 7591)
+    raise HTTPException(status_code=501, detail="Not Implemented")
+
 @app.post("/oauth/par", status_code=201)
 async def push_authorization_request(payload: ParRequest):
     # TODO: Implement Pushed Authorization Requests (RFC 9126)
@@ -35,6 +40,11 @@ async def token(payload: TokenRequest, dpop: Optional[str] = Header(None, alias=
     # TODO: Implement Token Exchange, RTR with Family Cascading Revocation, and DPoP proof binding
     raise HTTPException(status_code=501, detail="Not Implemented")
 
+@app.get("/oauth/userinfo")
+async def userinfo(req: Request, authorization: Optional[str] = Header(None, alias="Authorization")):
+    # TODO: Implement OIDC UserInfo Endpoint (RFC 6750)
+    raise HTTPException(status_code=501, detail="Not Implemented")
+
 @app.post("/oauth/introspect")
 async def introspect(payload: IntrospectRequest):
     # TODO: Implement Token Introspection (RFC 7662)
@@ -48,6 +58,11 @@ async def revoke(payload: RevokeRequest):
 @app.post("/oauth/device/code")
 async def device_code(payload: DeviceCodeRequest):
     # TODO: Implement Device Authorization Flow (RFC 8628)
+    raise HTTPException(status_code=501, detail="Not Implemented")
+
+@app.post("/oauth/device/verify")
+async def device_verify(payload: DeviceVerifyRequest):
+    # TODO: Implement Device User Code Verification (RFC 8628)
     raise HTTPException(status_code=501, detail="Not Implemented")
 
 @app.post("/api/v1/protected/resource")

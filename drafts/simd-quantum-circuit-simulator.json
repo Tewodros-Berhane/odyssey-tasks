@@ -8,11 +8,11 @@
   "motivation": "Quantum circuit simulation is heavily compute- and memory-bandwidth-bound (2^32 complex amplitudes require 64 GB of memory in complex64). Pushing simulation performance requires advanced SIMD complex multiplication, cache-locality optimization across non-contiguous index strides, and algebraic gate fusion.",
   "difficultyExplanation": "1. SIMD Complex Arithmetic on Strided Amplitudes: Applying quantum gates across non-contiguous qubit target indices requires fast SIMD permutations (_mm256_permute2f128_ps, _mm256_shuffle_ps) to avoid strided memory access bottlenecks.\n2. Algebraic Gate Fusion: Analyzing circuit DAGs to automatically coalesce consecutive 1-qubit and 2-qubit operations acting on overlapping target qubits into fused multi-qubit unitary matrices to minimize memory bandwidth passes.\n3. Multi-Threaded Cache-Blocking: Partitioning the 2^N state vector into L1/L2 cache-sized sub-blocks so multiple gates can be applied in SRAM without round-tripping to main RAM.",
   "expertTimeEstimateHours": 16,
-  "environmentSummary": "Debian 12 with gcc-13, clang-18, cmake, ninja-build, and Python 3.10 verification harness in /app. Starter repository includes complex arithmetic vector abstractions, basic quantum gate definitions, state vector memory allocators, and unit test runners.",
+  "environmentSummary": "Ubuntu 24.04 with gcc-13, clang-18, cmake, ninja-build, and Python 3.12 verification harness in /app. Starter repository includes complex arithmetic vector abstractions, basic quantum gate definitions, state vector memory allocators, and unit test runners.",
   "resourceEstimate": {
-    "cpuMillis": 8000,
-    "memoryMb": 65536,
-    "storageMb": 20480,
+    "cpuMillis": 4000,
+    "memoryMb": 8192,
+    "storageMb": 4096,
     "gpuCount": 0,
     "agentTimeoutSec": 28800,
     "verifierTimeoutSec": 1800

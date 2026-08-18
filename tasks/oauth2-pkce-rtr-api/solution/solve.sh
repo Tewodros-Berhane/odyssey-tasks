@@ -16,6 +16,15 @@ def init_db():
     conn = get_db()
     with conn:
         conn.executescript("""
+        CREATE TABLE IF NOT EXISTS clients (
+            client_id TEXT PRIMARY KEY,
+            client_secret TEXT NOT NULL,
+            client_name TEXT NOT NULL,
+            redirect_uris TEXT NOT NULL,
+            grant_types TEXT NOT NULL,
+            token_endpoint_auth_method TEXT DEFAULT 'client_secret_post',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
         CREATE TABLE IF NOT EXISTS par_requests (
             request_uri TEXT PRIMARY KEY,
             client_id TEXT NOT NULL,
@@ -34,14 +43,14 @@ def init_db():
         CREATE TABLE IF NOT EXISTS tokens (
             token TEXT PRIMARY KEY,
             family_id TEXT NOT NULL,
-            token_type TEXT NOT NULL, -- 'access_token', 'refresh_token'
+            token_type TEXT NOT NULL,
             scope TEXT DEFAULT 'openid',
             dpop_jkt TEXT,
-            status TEXT NOT NULL      -- 'active', 'used', 'revoked'
+            status TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS device_codes (
             device_code TEXT PRIMARY KEY,
-            user_code TEXT NOT NULL,
+            user_code TEXT NOT NULL UNIQUE,
             client_id TEXT NOT NULL,
             scope TEXT DEFAULT 'openid',
             status TEXT NOT NULL DEFAULT 'pending'
@@ -50,7 +59,14 @@ def init_db():
             jti TEXT PRIMARY KEY,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS users (
+            sub TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            email_verified INTEGER DEFAULT 1
+        );
         """)
+        conn.execute("INSERT OR IGNORE INTO users (sub, name, email) VALUES ('user_123', 'Odyssey Developer', 'dev@odyssey.com')")
 EOF
 
 cat << 'EOF' > /app/main.py
@@ -65,7 +81,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 from fastapi import FastAPI, Request, Header
 from fastapi.responses import JSONResponse
-from models import ParRequest, AuthorizeRequest, TokenRequest, IntrospectRequest, RevokeRequest, DeviceCodeRequest
+from models import ClientRegisterRequest, ParRequest, AuthorizeRequest, TokenRequest, IntrospectRequest, RevokeRequest, DeviceCodeRequest, DeviceVerifyRequest
 from database import init_db, get_db
 
 app = FastAPI()
@@ -124,6 +140,8 @@ async def openid_config():
         "authorization_endpoint": "https://auth.example.com/oauth/authorize",
         "token_endpoint": "https://auth.example.com/oauth/token",
         "jwks_uri": "https://auth.example.com/.well-known/jwks.json",
+        "registration_endpoint": "https://auth.example.com/oauth/register",
+        "userinfo_endpoint": "https://auth.example.com/oauth/userinfo",
         "pushed_authorization_request_endpoint": "https://auth.example.com/oauth/par",
         "dpop_signing_alg_values_supported": ["RS256"],
         "response_types_supported": ["code"],
@@ -144,6 +162,22 @@ async def jwks():
                 "e": server_jwk_e
             }
         ]
+    }
+
+@app.post("/oauth/register", status_code=201)
+async def register(payload: ClientRegisterRequest):
+    c_id = f"client_{uuid.uuid4().hex[:12]}"
+    c_sec = f"sec_{uuid.uuid4().hex}"
+    conn = get_db()
+    with conn:
+        conn.execute("INSERT INTO clients (client_id, client_secret, client_name, redirect_uris, grant_types, token_endpoint_auth_method) VALUES (?, ?, ?, ?, ?, ?)",
+                     (c_id, c_sec, payload.client_name, json.dumps(payload.redirect_uris), json.dumps(payload.grant_types or []), payload.token_endpoint_auth_method or "client_secret_post"))
+    return {
+        "client_id": c_id,
+        "client_secret": c_sec,
+        "client_name": payload.client_name,
+        "redirect_uris": payload.redirect_uris,
+        "grant_types": payload.grant_types
     }
 
 @app.post("/oauth/par", status_code=201)
@@ -244,8 +278,39 @@ async def token(payload: TokenRequest, req: Request):
         with conn:
             conn.execute("INSERT INTO tokens (token, family_id, token_type, scope, dpop_jkt, status) VALUES (?, ?, 'access_token', ?, ?, 'active')", (at, family_id, scope, dpop_jkt))
         return {"access_token": at, "token_type": tok_type, "expires_in": 7200, "scope": scope}
+
+    elif payload.grant_type == "urn:ietf:params:oauth:grant-type:device_code":
+        dev_code = payload.device_code
+        with conn:
+            row = conn.execute("SELECT * FROM device_codes WHERE device_code = ?", (dev_code,)).fetchone()
+            if not row:
+                return JSONResponse(status_code=400, content={"error": "invalid_grant"})
+            if row["status"] == "pending":
+                return JSONResponse(status_code=400, content={"error": "authorization_pending"})
+            if row["status"] == "denied":
+                return JSONResponse(status_code=400, content={"error": "access_denied"})
+
+            at = mint_jwt(sub=row["client_id"], scope=row["scope"], dpop_jkt=dpop_jkt, expires_in=3600)
+            return {"access_token": at, "token_type": "Bearer", "expires_in": 3600}
     
     return JSONResponse(status_code=400, content={"error": "unsupported_grant_type"})
+
+@app.get("/oauth/userinfo")
+async def userinfo(req: Request):
+    auth = req.headers.get("Authorization", "")
+    if not auth:
+        return JSONResponse(status_code=401, content={"error": "invalid_token"})
+    token = auth.split(" ")[-1]
+    try:
+        claims = jwt.decode(token, server_pem_pub, algorithms=["RS256"], options={"verify_aud": False})
+        sub = claims["sub"]
+        conn = get_db()
+        row = conn.execute("SELECT * FROM users WHERE sub = ?", (sub,)).fetchone()
+        if not row:
+            return {"sub": sub, "name": "User", "email": f"{sub}@example.com", "email_verified": True}
+        return {"sub": row["sub"], "name": row["name"], "email": row["email"], "email_verified": bool(row["email_verified"])}
+    except Exception:
+        return JSONResponse(status_code=401, content={"error": "invalid_token"})
 
 @app.post("/oauth/introspect")
 async def introspect(payload: IntrospectRequest):
@@ -283,6 +348,17 @@ async def device_code(payload: DeviceCodeRequest):
         "interval": 5
     }
 
+@app.post("/oauth/device/verify")
+async def device_verify(payload: DeviceVerifyRequest):
+    status = "approved" if payload.approved else "denied"
+    conn = get_db()
+    with conn:
+        row = conn.execute("SELECT * FROM device_codes WHERE user_code = ?", (payload.user_code,)).fetchone()
+        if not row:
+            return JSONResponse(status_code=404, content={"error": "invalid_user_code"})
+        conn.execute("UPDATE device_codes SET status = ? WHERE user_code = ?", (status, payload.user_code))
+    return {"status": status}
+
 @app.post("/api/v1/protected/resource")
 async def protected_resource(req: Request):
     auth = req.headers.get("Authorization", "")
@@ -293,7 +369,6 @@ async def protected_resource(req: Request):
     token = auth.split(" ")[-1]
     conn = get_db()
 
-    # 1. Parse DPoP Header & verify signature + jti replay
     try:
         unverified_header = jwt.get_unverified_header(dpop)
         jwk = unverified_header["jwk"]
@@ -308,12 +383,10 @@ async def protected_resource(req: Request):
         jti = dpop_claims["jti"]
 
         with conn:
-            # Check JTI replay
             if conn.execute("SELECT 1 FROM dpop_jti_cache WHERE jti = ?", (jti,)).fetchone():
                 return JSONResponse(status_code=401, content={"error": "invalid_dpop_proof"})
             conn.execute("INSERT INTO dpop_jti_cache (jti) VALUES (?)", (jti,))
 
-        # Verify access token signature & cnf.jkt binding
         at_claims = jwt.decode(token, server_pem_pub, algorithms=["RS256"], options={"verify_aud": False})
         expected_jkt = compute_jwk_thumbprint(jwk)
         if at_claims.get("cnf", {}).get("jkt") != expected_jkt:
@@ -323,3 +396,5 @@ async def protected_resource(req: Request):
     except Exception:
         return JSONResponse(status_code=401, content={"error": "invalid_dpop_proof"})
 EOF
+
+echo "Reference solution deployed successfully."

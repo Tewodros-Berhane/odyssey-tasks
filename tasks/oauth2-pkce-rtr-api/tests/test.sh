@@ -28,13 +28,14 @@ if os.path.exists("/tmp/pytest_results.log"):
         output = f.read()
 
 suites = {
+    "test_dynamic_client_registration_rfc7591": 0.10,
     "test_pushed_authorization_requests_par": 0.15,
     "test_pkce_authorization_code_and_padding_strictness": 0.15,
     "test_refresh_token_rotation_and_cascade": 0.15,
-    "test_dpop_proof_of_possession_and_replay": 0.20,
-    "test_jwks_and_oidc_discovery": 0.15,
+    "test_dpop_proof_of_possession_and_replay": 0.15,
+    "test_userinfo_and_jwks_discovery": 0.10,
     "test_token_introspection_and_revocation": 0.10,
-    "test_client_credentials_and_device_flow": 0.10
+    "test_device_flow_and_user_verification": 0.10
 }
 
 score = 0.0

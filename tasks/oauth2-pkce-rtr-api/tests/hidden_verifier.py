@@ -61,11 +61,28 @@ def generate_pkce_pair(verifier_len=43):
     challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
     return verifier, challenge
 
+def test_dynamic_client_registration_rfc7591():
+    r_reg = client.post("/oauth/register", json={
+        "client_name": "FAPI Client Suite",
+        "redirect_uris": ["https://myclient.com/callback"],
+        "grant_types": ["authorization_code", "refresh_token"]
+    })
+    assert r_reg.status_code == 201
+    data = r_reg.json()
+    assert "client_id" in data
+    assert "client_secret" in data
+    assert data["client_name"] == "FAPI Client Suite"
+    assert data["redirect_uris"] == ["https://myclient.com/callback"]
+
 def test_pushed_authorization_requests_par():
+    # 1. Register client
+    r_reg = client.post("/oauth/register", json={"client_name": "PAR App", "redirect_uris": ["https://app.com/cb"]})
+    c_id = r_reg.json()["client_id"]
+
     v, c = generate_pkce_pair()
-    # 1. Push authorization request
+    # 2. Push authorization request
     r_par = client.post("/oauth/par", json={
-        "client_id": "par_client_1",
+        "client_id": c_id,
         "response_type": "code",
         "code_challenge": c,
         "code_challenge_method": "S256",
@@ -77,15 +94,15 @@ def test_pushed_authorization_requests_par():
     assert par_data.get("expires_in") == 60
     req_uri = par_data["request_uri"]
 
-    # 2. Authorize using request_uri
+    # 3. Authorize using request_uri
     r_auth = client.post("/oauth/authorize", json={"request_uri": req_uri})
     assert r_auth.status_code == 200
     code = r_auth.json()["authorization_code"]
 
-    # 3. Exchange code for token
+    # 4. Exchange code for token
     r_tok = client.post("/oauth/token", json={
         "grant_type": "authorization_code",
-        "client_id": "par_client_1",
+        "client_id": c_id,
         "code": code,
         "code_verifier": v
     })
@@ -150,18 +167,26 @@ def test_dpop_proof_of_possession_and_replay():
     r_replay = client.post("/api/v1/protected/resource", headers={"Authorization": f"DPoP {at}", "DPoP": dpop_res_proof})
     assert r_replay.status_code == 401
 
-def test_jwks_and_oidc_discovery():
+def test_userinfo_and_jwks_discovery():
     r_disc = client.get("/.well-known/openid-configuration")
     assert r_disc.status_code == 200
     disc = r_disc.json()
     assert "token_endpoint" in disc
     assert "jwks_uri" in disc
-    assert "pushed_authorization_request_endpoint" in disc
+    assert "registration_endpoint" in disc
+    assert "userinfo_endpoint" in disc
 
     r_jwks = client.get("/.well-known/jwks.json")
     assert r_jwks.status_code == 200
     assert len(r_jwks.json()["keys"]) > 0
-    assert r_jwks.json()["keys"][0]["kty"] == "RSA"
+
+    # Test UserInfo endpoint
+    r_cc = client.post("/oauth/token", json={"grant_type": "client_credentials", "client_id": "user_123", "scope": "openid email"})
+    at = r_cc.json()["access_token"]
+    r_uinfo = client.get("/oauth/userinfo", headers={"Authorization": f"Bearer {at}"})
+    assert r_uinfo.status_code == 200
+    u_data = r_uinfo.json()
+    assert u_data["email"] == "dev@odyssey.com"
 
 def test_token_introspection_and_revocation():
     v, c = generate_pkce_pair()
@@ -180,11 +205,23 @@ def test_token_introspection_and_revocation():
     assert r_intro2.status_code == 200
     assert r_intro2.json().get("active") is False
 
-def test_client_credentials_and_device_flow():
-    r_cc = client.post("/oauth/token", json={"grant_type": "client_credentials", "client_id": "m2m", "client_secret": "sec", "scope": "svc"})
-    assert r_cc.status_code == 200
-    assert "access_token" in r_cc.json()
-
+def test_device_flow_and_user_verification():
     r_dev = client.post("/oauth/device/code", json={"client_id": "tv_client"})
     assert r_dev.status_code == 200
-    assert "device_code" in r_dev.json()
+    dev_data = r_dev.json()
+    dev_code = dev_data["device_code"]
+    u_code = dev_data["user_code"]
+
+    # Before user approval, polling returns 400 authorization_pending
+    r_poll1 = client.post("/oauth/token", json={"grant_type": "urn:ietf:params:oauth:grant-type:device_code", "client_id": "tv_client", "device_code": dev_code})
+    assert r_poll1.status_code == 400
+    assert r_poll1.json().get("error") == "authorization_pending"
+
+    # User verifies code
+    r_verify = client.post("/oauth/device/verify", json={"user_code": u_code, "approved": True})
+    assert r_verify.status_code == 200
+
+    # After approval, polling returns access token
+    r_poll2 = client.post("/oauth/token", json={"grant_type": "urn:ietf:params:oauth:grant-type:device_code", "client_id": "tv_client", "device_code": dev_code})
+    assert r_poll2.status_code == 200
+    assert "access_token" in r_poll2.json()

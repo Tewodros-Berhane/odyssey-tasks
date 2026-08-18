@@ -9,43 +9,19 @@ thread_local ThreadCache Allocator::thread_cache_;
 
 ThreadCache::ThreadCache() {}
 
-ThreadCache::~ThreadCache() {
-    for (size_t i = 0; i < NUM_SMALL_CLASSES; ++i) {
-        if (local_bins_[i]) {
-            FreeNode* head = local_bins_[i];
-            FreeNode* tail = head;
-            while (tail && tail->next.load()) {
-                tail = tail->next.load();
-            }
-            if (head && tail) {
-                CentralArena::GetInstance().PushBatch(i, head, tail, bin_counts_[i]);
-            }
-            local_bins_[i] = nullptr;
-        }
-    }
-}
+ThreadCache::~ThreadCache() {}
 
 void* ThreadCache::Allocate(size_t size_class, size_t obj_size) {
-    if (local_bins_[size_class] != nullptr) {
-        FreeNode* node = local_bins_[size_class];
-        local_bins_[size_class] = node->next.load();
-        bin_counts_[size_class]--;
-        return static_cast<void*>(node);
-    }
-    // Fallback allocate from CentralArena or malloc
-    return std::malloc(obj_size);
+    (void)size_class;
+    (void)obj_size;
+    // TODO: Implement thread-local bin allocation with central batch filling
+    return nullptr;
 }
 
 void ThreadCache::Deallocate(size_t size_class, void* ptr) {
-    if (!ptr) return;
-    if (bin_counts_[size_class] < 64) {
-        FreeNode* node = static_cast<FreeNode*>(ptr);
-        node->next.store(local_bins_[size_class]);
-        local_bins_[size_class] = node;
-        bin_counts_[size_class]++;
-    } else {
-        HazardPointerDomain::GetInstance().Retire(ptr);
-    }
+    (void)size_class;
+    (void)ptr;
+    // TODO: Implement thread-local bin deallocation with hazard pointer retiring
 }
 
 size_t Allocator::SizeToClass(size_t bytes) {
@@ -64,29 +40,20 @@ size_t Allocator::ClassToSize(size_t size_class) {
 }
 
 void* Allocator::Malloc(size_t bytes) {
-    if (bytes == 0) return nullptr;
-    if (bytes <= MAX_SMALL_SIZE) {
-        size_t sc = SizeToClass(bytes);
-        return thread_cache_.Allocate(sc, bytes);
-    }
-    return std::malloc(bytes);
+    (void)bytes;
+    // TODO: Implement Allocator Malloc
+    return nullptr;
 }
 
 void Allocator::Free(void* ptr) {
-    if (!ptr) return;
-    HazardPointerDomain::GetInstance().Retire(ptr);
+    (void)ptr;
+    // TODO: Implement Allocator Free
 }
 
 void* Allocator::Realloc(void* ptr, size_t new_size) {
-    if (!ptr) return Malloc(new_size);
-    if (new_size == 0) {
-        Free(ptr);
-        return nullptr;
-    }
-    void* new_ptr = Malloc(new_size);
-    std::memcpy(new_ptr, ptr, std::min(new_size, (size_t)64));
-    Free(ptr);
-    return new_ptr;
+    (void)ptr;
+    (void)new_size;
+    return nullptr;
 }
 
 } // namespace lf_alloc

@@ -186,3 +186,10 @@ To prevent automated validation rejections during the intake and oracle/nop exec
   - Setting `agentTimeoutSec: 43200` (12h) causes an intake validation error: *"Above 37000s (~10h) — leave room for build, verify, teardown, which share a trial's 14h wall-clock limit"*.
   - **`verifierTimeoutSec`**: Set to **`1800` seconds (30 minutes)**.
   - **`expertTimeEstimateHours`**: Set between **`16` and `20` hours** (this is a human effort estimate and is independent of the agent execution timeout).
+
+### 9. NOP Reward Leakage Prevention (`An empty / no-op attempt already scored reward — the reward leaks`)
+- **Root Cause**: During the automated validation pipeline, Odyssey executes `tests/test.sh` against the unedited starter code in `environment/` (NOP attempt). If the starter code already contains working logic, or if `test.sh` contains hardcoded score increments without executing real test assertions, the NOP attempt scores $> 0.05$ (or 100/100), causing an immediate failure: *"An empty / no-op attempt already scored reward — the reward leaks"*.
+- **Prevention Guardrails**:
+  - **Starter Skeletons**: Code in `environment/` must consist of typed stubs and skeleton implementations (e.g., throwing `HTTPException(501)` in Python or empty skeleton bodies in C++) that fail verification out of the box.
+  - **Dynamic Test Assertions**: `test.sh` must NEVER include hardcoded score additions (e.g., `TOTAL_SCORE=$((TOTAL_SCORE + 25))` without running a real binary). Every point must be contingent on passing real assertions.
+  - **Strict Separation**: Only running `solution/solve.sh` should write the working implementation and achieve $\ge 0.95$ (1.0) reward.

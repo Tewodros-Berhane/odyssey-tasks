@@ -24,33 +24,11 @@ void QuantumSimulator::AppendGate(const GateOp& gate) {
 }
 
 void QuantumSimulator::OptimizeDAG() {
-    // SKELETON: To be implemented for gate fusion
+    // TODO: Implement static unitary gate fusion optimizer
 }
 
 void QuantumSimulator::Run() {
-    for (const auto& gate : circuit_) {
-        if (gate.type == GateType::H) {
-            float inv_sqrt2 = 1.0f / std::sqrt(2.0f);
-            GateMatrix2x2 mat{
-                {inv_sqrt2, 0}, {inv_sqrt2, 0},
-                {inv_sqrt2, 0}, {-inv_sqrt2, 0}
-            };
-            SIMDComplex::ApplyGate1Q_AVX2(state_vector_.data(), num_amplitudes_, gate.targets[0], mat);
-        } else if (gate.type == GateType::X) {
-            GateMatrix2x2 mat{
-                {0, 0}, {1, 0},
-                {1, 0}, {0, 0}
-            };
-            SIMDComplex::ApplyGate1Q_AVX2(state_vector_.data(), num_amplitudes_, gate.targets[0], mat);
-        } else if (gate.type == GateType::CX) {
-            GateMatrix4x4 mat{};
-            mat.data[0][0] = {1, 0};
-            mat.data[1][1] = {1, 0};
-            mat.data[2][3] = {1, 0};
-            mat.data[3][2] = {1, 0};
-            SIMDComplex::ApplyGate2Q_AVX2(state_vector_.data(), num_amplitudes_, gate.targets[0], gate.controls[0], mat);
-        }
-    }
+    // TODO: Implement circuit execution using AVX2 SIMD Complex kernels
 }
 
 complex_t QuantumSimulator::GetAmplitude(size_t index) const {
@@ -77,7 +55,7 @@ std::vector<uint32_t> QuantumSimulator::Sample(size_t num_shots) {
     std::vector<uint32_t> shots;
     shots.reserve(num_shots);
     std::default_random_engine rng(42);
-    std::uniform_real_distribution<float> dist(0.0f, sum);
+    std::uniform_real_distribution<float> dist(0.0f, sum > 0.0f ? sum : 1.0f);
 
     for (size_t s = 0; s < num_shots; ++s) {
         float r = dist(rng);

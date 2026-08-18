@@ -74,6 +74,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request, Header, Response
 from fastapi.responses import JSONResponse
+from models import AccountCreate, TransferRequest, HoldCreate, HoldCapture
 from database import init_db, get_db
 
 app = FastAPI()
@@ -99,12 +100,11 @@ def get_account_balances(conn, account_id: str):
     return acc, avail
 
 @app.post("/api/v1/accounts", status_code=201)
-async def create_account(req: Request):
-    data = await req.json()
-    acc_id = data.get("id", f"acc_{uuid.uuid4().hex[:12]}")
-    tenant_id = data["tenant_id"]
-    currency = data["currency"]
-    balance = data.get("initial_balance", 0)
+async def create_account(payload: AccountCreate):
+    acc_id = payload.id or f"acc_{uuid.uuid4().hex[:12]}"
+    tenant_id = payload.tenant_id
+    currency = payload.currency
+    balance = payload.initial_balance or 0
 
     conn = get_db()
     with conn:
@@ -128,9 +128,8 @@ def get_account(account_id: str):
         return {"id": acc["id"], "tenant_id": acc["tenant_id"], "currency": acc["currency"], "balance": acc["balance"], "available_balance": avail}
 
 @app.post("/api/v1/transfers")
-async def transfer(req: Request, idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"), x_tenant_id: Optional[str] = Header("default", alias="X-Tenant-ID")):
+async def transfer(req: Request, payload: TransferRequest, idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"), x_tenant_id: Optional[str] = Header("default", alias="X-Tenant-ID")):
     body_raw = await req.body()
-    data = json.loads(body_raw)
     conn = get_db()
 
     with conn:
@@ -142,12 +141,12 @@ async def transfer(req: Request, idempotency_key: Optional[str] = Header(None, a
                     raise HTTPException(status_code=422, detail="Idempotency conflict")
                 return Response(content=row["response_body"], status_code=row["response_code"], media_type="application/json")
 
-        res_from = get_account_balances(conn, data["from_account_id"])
+        res_from = get_account_balances(conn, payload.from_account_id)
         if not res_from:
             raise HTTPException(status_code=400, detail="Source account not found")
         from_acc, avail = res_from
-        to_acc = conn.execute("SELECT * FROM accounts WHERE id = ?", (data["to_account_id"],)).fetchone()
-        amt = data["amount"]
+        to_acc = conn.execute("SELECT * FROM accounts WHERE id = ?", (payload.to_account_id,)).fetchone()
+        amt = payload.amount
 
         if not to_acc or avail < amt or amt <= 0:
             raise HTTPException(status_code=400, detail="Invalid transfer amount or insufficient funds")
@@ -170,26 +169,24 @@ async def transfer(req: Request, idempotency_key: Optional[str] = Header(None, a
         return resp_data
 
 @app.post("/api/v1/holds", status_code=201)
-async def create_hold(req: Request):
-    data = await req.json()
+async def create_hold(payload: HoldCreate):
     conn = get_db()
     with conn:
-        res = get_account_balances(conn, data["account_id"])
+        res = get_account_balances(conn, payload.account_id)
         if not res:
             raise HTTPException(status_code=404, detail="Account not found")
         acc, avail = res
-        if data["amount"] > avail or data["amount"] <= 0:
+        if payload.amount > avail or payload.amount <= 0:
             raise HTTPException(status_code=400, detail="Insufficient available balance for hold")
 
         hold_id = f"hold_{uuid.uuid4().hex[:8]}"
         conn.execute("INSERT INTO holds (id, account_id, amount, currency, status, expires_at) VALUES (?, ?, ?, ?, 'active', ?)",
-                     (hold_id, acc["id"], data["amount"], data["currency"], data["expires_at"]))
+                     (hold_id, acc["id"], payload.amount, payload.currency, payload.expires_at))
 
-    return {"id": hold_id, "status": "active", "amount": data["amount"], "expires_at": data["expires_at"]}
+    return {"id": hold_id, "status": "active", "amount": payload.amount, "expires_at": payload.expires_at}
 
 @app.post("/api/v1/holds/{hold_id}/capture")
-async def capture_hold(hold_id: str, req: Request):
-    data = await req.json()
+async def capture_hold(hold_id: str, payload: HoldCapture):
     conn = get_db()
     with conn:
         expire_stale_holds(conn)
@@ -199,11 +196,11 @@ async def capture_hold(hold_id: str, req: Request):
         if hold["status"] != "active":
             raise HTTPException(status_code=409, detail=f"Hold cannot be captured in status: {hold['status']}")
 
-        capture_amt = data.get("capture_amount", hold["amount"])
+        capture_amt = payload.capture_amount if payload.capture_amount is not None else hold["amount"]
         if capture_amt > hold["amount"] or capture_amt <= 0:
             raise HTTPException(status_code=400, detail="Invalid capture amount")
 
-        dest_acc_id = data["destination_account_id"]
+        dest_acc_id = payload.destination_account_id
         conn.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?", (capture_amt, hold["account_id"]))
         conn.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", (capture_amt, dest_acc_id))
         conn.execute("UPDATE holds SET status = 'captured' WHERE id = ?", (hold_id,))

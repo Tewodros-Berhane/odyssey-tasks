@@ -1,5 +1,11 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Optional, List
+
+class ClientRegisterRequest(BaseModel):
+    client_name: str
+    redirect_uris: List[str]
+    grant_types: Optional[List[str]] = ["authorization_code", "refresh_token"]
+    token_endpoint_auth_method: Optional[str] = "client_secret_post"
 
 class ParRequest(BaseModel):
     client_id: str
@@ -38,3 +44,7 @@ class RevokeRequest(BaseModel):
 class DeviceCodeRequest(BaseModel):
     client_id: str
     scope: Optional[str] = None
+
+class DeviceVerifyRequest(BaseModel):
+    user_code: str
+    approved: bool = True
