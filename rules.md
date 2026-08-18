@@ -119,3 +119,50 @@ To clear final human review and qualify for payout, tasks must meet these criter
 - **Realistic & Grounded**: Mirrors genuine software engineering workflows, tools, and environments rather than artificial drills.
 - **Novel**: Truly original problem formulation, not a re-skin of existing benchmark exercises.
 - **Calibrated Difficulty**: Proven solvable by oracle while resisting trivial saturation by frontier models.
+
+---
+
+## 6. Common Automated Validation Errors & Prevention Guardrails
+
+To prevent automated validation rejections during the intake and oracle/nop execution stages, every task bundle must strictly adhere to these 5 rules:
+
+### 1. Dockerfile Build Context & Package Availability
+- **Build Context Rule**: The Docker build context is the `environment/` directory, **not** the task root directory.
+  - **CORRECT**: `COPY app /app` and `COPY tests /app/tests`
+  - **INCORRECT (Build Fails)**: `COPY environment/app /app` or `COPY environment/tests /app/tests` (causes `"/environment/tests": not found`).
+- **Base Image & Package Availability**:
+  - Prefer `FROM ubuntu:24.04` (Noble) for C/C++/Systems tasks (natively includes GCC 13, Clang 18, LLVM, CMake, Ninja, and Python 3.12 without broken `update-alternatives` or missing PPA errors).
+  - Use `FROM python:3.11-slim` for pure Python APIs.
+  - Never specify nonexistent packages on older Ubuntu versions (e.g., `gcc-13` on `ubuntu:22.04` causes `apt-get install` failure).
+
+### 2. Mandatory Verifier Reward Files (`verifier/reward.txt` & `reward.json`)
+- **Reward File Rule**: Every trial (both untouched **NOP** starter code and **Oracle** solution runs) must produce a reward file. Failing to write this file results in `Your verifier completed without writing a reward file (verifier/reward.txt or reward.json)`.
+- **Implementation**:
+  - `tests/test.sh` must write the floating-point score (e.g., `0.0` or `1.0`) to `verifier/reward.txt`, `reward.txt`, `/tmp/verifier/reward.txt`, and `/tmp/reward.txt`.
+  - It must write `{"reward": <score>, "passed": [...]}` to `reward.json` and `verifier/reward.json`.
+  - Create parent directories (`mkdir -p verifier /tmp/verifier /logs/verifier`) to guarantee file creation regardless of container working directory.
+  - Discover `hidden_verifier.py` dynamically across `/tests/hidden_verifier.py`, `tests/hidden_verifier.py`, and `/app/tests/hidden_verifier.py`.
+
+### 3. Oracle Solution Protocol Exactness (`The reference solution didn't solve the task`)
+- **Response Format Rule**: When implementing API endpoints, verify top-level payload schemas strictly against RFCs and verifier assertions.
+  - For example, in FastAPI, raising `HTTPException(status_code=400, detail={"error": "invalid_grant"})` nests the error under `{"detail": {"error": ...}}`.
+  - To return top-level RFC-compliant JSON (`{"error": "invalid_grant"}`), always use `JSONResponse(status_code=400, content={"error": "invalid_grant"})`.
+- **Local Pre-Verification**: Always test `solution/solve.sh` against the hidden verifier suite to guarantee a 100% full-reward run.
+
+### 4. Verifier Family Synchronization (`verifier family mismatch`)
+- The `verifierFamily` field selected in the web draft form must match `verifier_family` in `task.toml` exactly:
+  - If using `test.sh` unit test scripts: use `"programmatic"` (both in the draft form and in `task.toml`).
+
+### 5. ZIP Path Delimiters (`Bundle rejected: unsafe path`)
+- Windows backslashes (`\`) inside ZIP entry paths trigger immediate rejection by Odyssey quarantine scanners.
+- Always use a Python script with `posix_name = rel_path.replace("\\", "/")` to write archives with forward-slash delimiters exclusively.
+
+### 6. Difficulty Probe & Long-Horizon Scope Floor (`Too short for the collection — not long-horizon`)
+- **Root Cause**: Odyssey evaluates tasks using autonomous difficulty probe agents. If a task consists of only 1–2 simple endpoints or <100 lines of straightforward logic, automated frontier agents solve it in a single trivial turn (10–15 minutes), causing immediate rejection at the **Difficulty evaluation** stage.
+- **Requirements to Pass Difficulty Evaluation**:
+  - **Substantial Scope**: Tasks must represent comprehensive systems (e.g., 6–10 interrelated endpoints/features, full RFC state machines, asymmetric cryptography, token lifecycle management, database transactions).
+  - **Expert Effort & Compute Budget**:
+    - Set `expertTimeEstimateHours`: 16 – 20 hours.
+    - Set `agentTimeoutSec`: 28800 (8 hours) to reflect true long-horizon evaluation.
+    - Set `verifierTimeoutSec`: 1800 (30 minutes).
+  - **Multi-Module Depth**: Separate concerns across data models, crypto/hash engines, background workers, storage tables, and protocol validation.

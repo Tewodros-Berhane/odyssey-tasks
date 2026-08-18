@@ -1,25 +1,21 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    gcc-13 \
-    g++-13 \
     cmake \
     ninja-build \
     valgrind \
     gdb \
-    clang-16 \
-    clang-tools-16 \
-    llvm-16 \
+    clang \
+    llvm \
     python3 \
     python3-pip \
     git \
     pkg-config \
-    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100 \
-    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100 \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

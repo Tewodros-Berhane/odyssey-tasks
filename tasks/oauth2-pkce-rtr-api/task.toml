@@ -1,0 +1,21 @@
+[metadata]
+name = "Production-Grade RFC 6749/7636/7519 OAuth 2.0 & OIDC Authorization Server with PKCE, RTR, and JWKS"
+slug = "oauth2-pkce-rtr-api"
+collection_family = "Product clone"
+task_family = "feature_development"
+verifier_family = "programmatic"
+
+[environment]
+cpus = 4
+memory_mb = 8192
+storage_mb = 4096
+gpus = 0
+network_mode = "none"
+
+[agent]
+timeout_sec = 28800
+network_mode = "none"
+
+[verifier]
+timeout_sec = 1800
+network_mode = "none"

@@ -1,0 +1,30 @@
+{
+  "title": "Enterprise Distributed DAG Saga Orchestrator with Cycle Detection, Retries, and Reverse Compensation",
+  "workingSlug": "dag-saga-orchestrator-api",
+  "collectionFamily": "Product clone",
+  "taskFamily": "feature_development",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a resilient, enterprise-grade Distributed DAG (Directed Acyclic Graph) Saga Orchestration Engine in Python/FastAPI using SQLite and AsyncIO. The engine must support multi-tenant distributed transaction workflows defined as arbitrary dependency DAGs, Kahn's algorithm cycle detection, concurrent topological forward dispatching, configurable retry policies with exponential backoff and step timeouts, Idempotency-Key request deduplication, multi-phase saga lifecycle state machines (pending, running, completed, compensating, compensated, compensation_failed), in-flight saga pause/resume controls, and parallel reverse topological compensation with an append-only SQLite state transition journal.",
+  "motivation": "Distributed microservice architectures require fault-tolerant transactional guarantees without two-phase locking. Implementing an enterprise DAG Saga coordinator from scratch tests asynchronous concurrency primitives, graph algorithms (topological sorting, cycle detection), resilient network dispatch with backoff, and distributed state machine persistence.",
+  "difficultyExplanation": "1. Topological Graph Validation & Kahn's Cycle Detection: Efficiently validating dynamic JSON DAGs, rejecting cycles and dangling dependency references with structured RFC-style error responses before committing transaction state to SQLite.\n2. Concurrent Forward Scheduling with Exponential Retries & Timeouts: Dispatching independent frontier nodes in parallel while orchestrating non-blocking async HTTP timeouts and retry backoff intervals without blocking other concurrent saga executions.\n3. Reverse Topological Parallel Compensation & Journal Audit: Correctly resolving the exact reverse topological dependency graph of completed steps to execute compensation HTTP endpoints concurrently across independent branches and recording immutable audit journal entries for every state transition.",
+  "expertTimeEstimateHours": 16,
+  "environmentSummary": "Python 3.11-slim container with FastAPI, Uvicorn, Pytest, HTTPX, SQLite3, and pre-configured Pydantic models in /app.",
+  "resourceEstimate": {
+    "cpuMillis": 4000,
+    "memoryMb": 8192,
+    "storageMb": 4096,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference implementation in solution/ providing an SQLite-backed async worker engine with Kahn's cycle detection, topological DAG scheduler, HTTP retry/timeout dispatcher, reverse leaf compensator, and REST journal endpoints.",
+  "verificationStrategy": "The verifier runs test.sh which executes multi-stage hidden pytest suites covering:\n1. DAG Cycle Detection & Dangling Dependency Validation (Kahn's algorithm rejection).\n2. Concurrent Forward Topological Execution across Parallel Diamond & Wide DAGs.\n3. Transient 5xx Retry Backoff & Step Timeout Handling.\n4. Reverse Topological Compensation Cascades upon Unrecoverable Failures.\n5. In-flight Saga Pause/Resume Controls & SQLite Audit Journal Integrity.",
+  "binarySuccessCondition": "Passes 100% of all hidden test suites across all 5 verification phases with full reward score >= 0.95.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 20%: DAG cycle detection & invalid dependency validation.\n- 20%: Forward parallel topological execution on diamond DAGs.\n- 20%: Step retries with exponential backoff and timeout handling.\n- 20%: Reverse topological parallel compensation rollbacks.\n- 20%: In-flight pause/resume controls and append-only state journal audit.",
+  "anticipatedExploits": "1. Sequential single-threaded step execution: Verifier measures execution wall-clock time across parallel branches to enforce concurrent HTTP dispatching.\n2. In-memory volatile state: Verifier queries SQLite database tables and journal entries directly across separate client connections."
+}

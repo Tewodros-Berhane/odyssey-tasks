@@ -1,0 +1,30 @@
+{
+  "title": "Production-Grade RFC 6749/7636/7519 OAuth 2.0 & OIDC Authorization Server with PKCE, RTR, and JWKS",
+  "workingSlug": "oauth2-pkce-rtr-api",
+  "collectionFamily": "Product clone",
+  "taskFamily": "feature_development",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a comprehensive, production-grade RFC 6749, RFC 7636, RFC 7519, RFC 7009, RFC 7662, and RFC 8628 compliant OAuth 2.0 / OpenID Connect Authorization Server in Python/FastAPI using SQLite. The engine must support multi-grant authentication workflows (Authorization Code with S256 PKCE, Client Credentials, Refresh Token Rotation with Token Family Replay Cascading Revocation, and Device Authorization Flow for input-constrained devices), cryptographic RSA/ECDSA JWKS key rotation (/.well-known/jwks.json), OIDC discovery (/.well-known/openid-configuration), signed JWT access token issuance, token introspection (RFC 7662), token revocation (RFC 7009), and fine-grained scope authorization policies.",
+  "motivation": "Modern cloud architectures depend on centralized, standards-compliant Identity Providers (IdPs) like Auth0, Keycloak, and Okta. Implementing a complete authorization server from scratch tests deep protocol specifications, cryptographic token minting, distributed state management, and multi-tenant security guarantees.",
+  "difficultyExplanation": "1. Multi-Grant State Machine Coordination: Simultaneously managing authorization code lifetimes, device authorization polling rates with slow-down backoff, client credentials, and refresh token families in SQLite without race conditions.\n2. Cascading Token Family Invalidation & Introspection: Tracking parent-child lineage across successive token rotations such that replaying any retired token immediately revokes all descendant access and refresh tokens across introspection and validation layers.\n3. Cryptographic JWKS & JWT Signing Pipeline: Generating ephemeral RSA keypairs, publishing RFC 7517 compliant JWKS structures, and signing/verifying RS256 JWT claims (iss, sub, aud, exp, nbf, scope) with strict key ID (kid) header binding.",
+  "expertTimeEstimateHours": 16,
+  "environmentSummary": "Python 3.11-slim container with FastAPI, Uvicorn, Pytest, Cryptography, PyJWT, HTTPX, SQLite3, and pre-configured schema definitions in /app.",
+  "resourceEstimate": {
+    "cpuMillis": 4000,
+    "memoryMb": 8192,
+    "storageMb": 4096,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference implementation providing an SQLite-backed multi-grant OAuth 2.0 server, RSA key management, Base64URL PKCE validation, token family cascade revocation, and RFC-compliant JSON responses.",
+  "verificationStrategy": "The verifier runs test.sh executing multi-stage hidden pytest suites evaluating:\n1. PKCE S256 authorization code exchange and unpadded Base64URL edge cases.\n2. Strict Refresh Token Rotation (RTR) and cascading token family replay attack invalidation.\n3. JWKS metadata discovery and RS256 JWT signature verification.\n4. RFC 7662 Token Introspection & RFC 7009 Token Revocation.\n5. RFC 8628 Device Authorization Grant with polling code expiration.",
+  "binarySuccessCondition": "Passes 100% of all hidden test suites across all 5 OAuth 2.0 grant protocols with full reward score.",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 20%: PKCE Authorization Code Grant & Base64URL strictness.\n- 20%: Strict Refresh Token Rotation (RTR) & family reuse detection.\n- 20%: JWKS & OIDC Discovery with RS256 JWT verification.\n- 20%: Token Introspection (RFC 7662) & Revocation (RFC 7009).\n- 20%: Device Authorization Flow (RFC 8628) & Client Credentials.",
+  "anticipatedExploits": "1. In-memory token storage: Verifier restarts database connections and audits SQLite tables directly.\n2. Unsigned/Dummy JWT tokens: Verifier validates RS256 public key cryptographic signatures against published JWKS."
+}
