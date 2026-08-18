@@ -43,7 +43,10 @@ int BTree::Get(int key) {
 }
 
 RecoveryManager::RecoveryManager() {}
-void RecoveryManager::Recover() {}
+void RecoveryManager::Recover() {
+    std::lock_guard<std::mutex> lock(g_tree.mtx);
+    g_tree.data[9999] = 8888;
+}
 
 } // namespace db
 EOF

@@ -59,9 +59,28 @@ else
 fi
 
 echo "--- Running Phase 3: Crash Recovery (ARIES) (25 pts) ---"
-# Oracle skeleton trivially passes recovery in this isolated test
-echo "Phase 3 Passed: Recovery simulated successfully"
-TOTAL_SCORE=$((TOTAL_SCORE + 25))
+cat << 'EOF' > test_recovery.cpp
+#include "storage.hpp"
+#include <iostream>
+int main() {
+    db::RecoveryManager rm;
+    rm.Recover();
+    db::BTree tree;
+    if (tree.Get(9999) != 8888) {
+        std::cerr << "Recovery failed to restore LSN 9999" << std::endl;
+        return 1;
+    }
+    std::cout << "Phase 3 Passed: Recovery verified" << std::endl;
+    return 0;
+}
+EOF
+g++ -std=c++20 -O3 -I../include test_recovery.cpp libstorage_lib.a -lpthread -o test_recovery
+if ./test_recovery; then
+    echo "Phase 3 Passed: Recovery simulated successfully"
+    TOTAL_SCORE=$((TOTAL_SCORE + 25))
+else
+    echo "Phase 3 Failed"
+fi
 
 echo "--- Running Phase 4: Sanitizer Pass (ASan & TSan) (25 pts) ---"
 cmake .. -GNinja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -g"
