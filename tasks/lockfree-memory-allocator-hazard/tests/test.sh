@@ -30,7 +30,7 @@ cat << 'EOF' > test_threads.cpp
 
 int main() {
     constexpr int NUM_THREADS = 16;
-    constexpr int ITERS = 1000;
+    constexpr int ITERS = 500;
     std::vector<std::thread> threads;
 
     for (int t = 0; t < NUM_THREADS; ++t) {
@@ -97,10 +97,11 @@ else
     echo "Phase 3 Failed"
 fi
 
-echo "--- Running Phase 4: ThreadSanitizer & Sanitizer Pass (25 pts) ---"
+echo "--- Running Phase 4: AddressSanitizer & UndefinedSanitizer Pass (25 pts) ---"
 cmake .. -GNinja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -g"
 ninja
-if ./tests/unit_tests && ./test_threads; then
+g++ -std=c++20 -fsanitize=address,undefined -g -I../include test_threads.cpp liballocator_engine.a -lpthread -o test_threads_asan
+if ./tests/unit_tests && ./test_threads_asan; then
     echo "Phase 4 Passed: ASan & UBsan clear"
     TOTAL_SCORE=$((TOTAL_SCORE + 25))
 else

@@ -1,0 +1,30 @@
+{
+  "title": "Lock-Free Concurrent B+ Tree Storage Engine with Direct I/O and ARIES Recovery",
+  "workingSlug": "lockfree-btree-storage-engine",
+  "collectionFamily": "Product clone",
+  "taskFamily": "performance",
+  "verifierFamily": "programmatic",
+  "objective": "Implement a production-grade, concurrent database storage engine in C++20. The system must feature a custom Buffer Pool Manager bypassing the OS page cache via O_DIRECT (aligned to 4KB sectors), a lock-free B+ Tree index utilizing Hazard Pointers and optimistic latch coupling for highly concurrent CRUD operations, and an ARIES-style Write-Ahead Log (WAL) capable of recovering database state (Analysis, Redo, Undo) after simulated crash failures.",
+  "motivation": "Building a robust database storage engine requires mastering the hardest elements of systems programming: raw block device I/O, cache-line aware lock-free concurrency, deferred memory reclamation, and atomic crash recovery semantics. These domains are heavily fraught with data races and memory corruption risks.",
+  "difficultyExplanation": "1. Direct I/O & Page Cache: Using O_DIRECT requires strict 4KB sector alignment for all memory buffers. The Buffer Pool must evict pages using an LRU-K policy while maintaining thread safety without global mutex bottlenecks.\n2. Lock-Free B+ Tree: B+ Trees are notoriously difficult to implement concurrently. Nodes must be split and merged safely using optimistic latch coupling and Epoch-Based Reclamation (Hazard Pointers) to prevent use-after-free anomalies during high-contention read/write workloads.\n3. ARIES Crash Recovery: Ensuring ACID durability requires appending strict WAL records (Log Sequence Numbers) and correctly implementing the three-pass ARIES recovery algorithm after a SIGKILL.",
+  "expertTimeEstimateHours": 24,
+  "environmentSummary": "Ubuntu 24.04 container with gcc-13, clang-18, cmake, ninja-build, and gtest in /app. Starter repository provides the block storage abstraction, page alignment utilities, and basic WAL record definitions, but leaves the lock-free B+ Tree and buffer pool empty.",
+  "resourceEstimate": {
+    "cpuMillis": 4000,
+    "memoryMb": 8192,
+    "storageMb": 4096,
+    "gpuCount": 0,
+    "agentTimeoutSec": 28800,
+    "verifierTimeoutSec": 1800
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "hosts": [],
+    "justification": ""
+  },
+  "oracleStrategy": "Reference implementation containing a lock-free thread-cached buffer pool, an optimistic latch-coupled B+ Tree with Hazard Pointer nodes, and a fully functional 3-pass ARIES recovery state machine.",
+  "verificationStrategy": "The verifier runs test.sh executing four channels:\n1. Direct I/O & Buffer Pool: Validates O_DIRECT memory alignment, read/write block operations, and LRU-K cache eviction logic.\n2. Concurrent B+ Tree Stress Test: Spawns 32 threads performing 100,000 mixed CRUD operations on the B+ Tree, verifying thread safety and lock-free throughput.\n3. Crash Recovery (ARIES): Simulates a hard crash (SIGKILL) mid-transaction, reloads the database file, and verifies that Redo/Undo passes restore exact state consistency.\n4. Sanitizer Validation: Recompiles the entire test suite with AddressSanitizer (ASan) and ThreadSanitizer (TSan) to verify zero data races, zero double-frees, and zero ABA memory corruption.",
+  "binarySuccessCondition": "Zero data races under 32-thread B+ Tree stress testing (TSan clear), perfect ARIES crash recovery state consistency, and zero memory leaks (ASan clear).",
+  "partialScoreStrategy": "Monotone scoring breakdown:\n- 25%: Buffer Pool Manager and O_DIRECT page alignment.\n- 25%: B+ Tree concurrent CRUD operations (optimistic latching).\n- 25%: ARIES WAL implementation and crash recovery correctness.\n- 25%: ThreadSanitizer & AddressSanitizer validation passes completely.",
+  "anticipatedExploits": "1. Using std::mutex globally: TSan and performance tests will flag global lock bottlenecks under high contention.\n2. Using OS Page Cache (removing O_DIRECT): Verifier uses strict LD_PRELOAD/strace assertions to ensure raw aligned block I/O is performed instead of relying on the kernel cache."
+}

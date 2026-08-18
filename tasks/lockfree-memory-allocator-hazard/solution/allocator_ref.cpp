@@ -1,9 +1,3 @@
-#!/usr/bin/env bash
-set -e
-
-echo "=== [Odyssey Oracle] Applying Lock-Free Allocator Reference Solution ==="
-
-cat << 'EOF' > /app/src/lockfree_allocator.cpp
 #include "lockfree_allocator.hpp"
 #include <cstdlib>
 #include <cstring>
@@ -103,6 +97,7 @@ void* Allocator::Malloc(size_t bytes) {
 
 void Allocator::Free(void* ptr) {
     if (!ptr) return;
+    // For small sizes, return to cache or free
     thread_cache_.Deallocate(0, ptr);
 }
 
@@ -120,12 +115,3 @@ void* Allocator::Realloc(void* ptr, size_t new_size) {
 }
 
 } // namespace lf_alloc
-EOF
-
-cd /app
-
-mkdir -p build && cd build
-cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release
-ninja
-
-echo "=== [Odyssey Oracle] Lock-Free Allocator Reference Built Successfully ==="
